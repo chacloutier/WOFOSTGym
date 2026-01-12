@@ -6,3 +6,6 @@ bash_scripts/
 experiments/
 test/
 sim_runs/
+wandb/
+.vscode/
+runs/

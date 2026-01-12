@@ -36,12 +36,14 @@ class RL_Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
-    wandb_project_name: str = "npk"
+    wandb_project_name: str = "WOFOST-RL"
     """the wandb's project name"""
-    wandb_entity: Optional[str] = None
+    wandb_entity: Optional[str] = "chacloutier-4B"
     """the entity (team) of wandb's project"""
     capture_video: bool = False
     """whether to capture videos of the agent performances (check out `videos` folder)"""
+    offline: bool = False 
+    """if toggled, wandb will run in offline mode for clusters without internet"""
 
 
 class Agent(ABC):
@@ -97,6 +99,7 @@ def setup(kwargs: Namespace, args: Namespace, run_name: str) -> tuple[SummaryWri
             name=run_name,
             monitor_gym=True,
             save_code=True,
+            mode = "offline" if args.offline else "online",
         )
     writer = SummaryWriter(f"{kwargs.save_folder}{run_name}")
     writer.add_text(
