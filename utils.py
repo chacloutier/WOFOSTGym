@@ -163,7 +163,14 @@ def make_gym_env(args: Namespace, run_name: str = None) -> gym.Env:
         env_id, env_kwargs = get_gym_args(args)
         env = gym.make(env_id, **env_kwargs).unwrapped
 
-        config = OmegaConf.structured(args)
+        args_dict = {
+            k: v for k, v in vars(args).items()
+            if k in Args.__dataclass_fields__
+        }
+
+        env_args = Args(**args_dict)
+
+        config = OmegaConf.structured(env_args)
 
         if hasattr(args, "agent_type"):
             if args.agent_type:
