@@ -74,7 +74,7 @@ slurm_template = """#!/bin/bash
 #SBATCH --time=3:00:00        
 #SBATCH --mem=16G             
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:1            # Request 1 GPU
+#SBATCH --gres=gpu:1
 #SBATCH --job-name={job_name}
 #SBATCH --output={log_dir}/%x-%j.out
 
