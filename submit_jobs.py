@@ -71,19 +71,23 @@ jobs = [
 # Adjust --account, --time, and --mem as needed
 slurm_template = """#!/bin/bash
 #SBATCH --account=def-mcrowley_gpu
-#SBATCH --time=3:00:00        
-#SBATCH --mem=16G             
-#SBATCH --cpus-per-task=4
+#SBATCH --time=0-3:00:00        
+#SBATCH --mem=8G             
+#SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:h100:1
 #SBATCH --job-name={job_name}
 #SBATCH --output={log_dir}/%x-%j.out
 
 # Activate Virtual Environment
-source $HOME/env_wofost/bin/activate 
+source $HOME/env/wofost_env/bin/activate 
+
+wandb login 607fcb9486c1989c71b6
 
 # Offline W&B Configuration
-export WANDB_MODE=offline
+export WANDB_MODE=online
 export WANDB_DIR={save_folder} 
+export WANDB_PROJECT="WOFOST-RL"
+export WANDB_ENTITY="chacloutier-4B"
 
 # 4. Run Command
 echo "Starting job on $(hostname)"
