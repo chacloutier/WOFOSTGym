@@ -86,7 +86,9 @@ export WANDB_MODE=online
 export WANDB_DIR={save_folder} 
 export WANDB_PROJECT="WOFOST-RL"
 export WANDB_ENTITY="chacloutier-4B"
-export WANDB_API_KEY="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"
+if [ -f $HOME/.wandb_key ]; then
+    export WANDB_API_KEY=$(cat $HOME/.wandb_key)
+fi
 
 wandb login --relogin
 
