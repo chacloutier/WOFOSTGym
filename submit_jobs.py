@@ -71,7 +71,7 @@ jobs = [
 # Adjust --account, --time, and --mem as needed
 slurm_template = """#!/bin/bash
 #SBATCH --account=def-mcrowley_gpu
-#SBATCH --time=0-3:00:00        
+#SBATCH --time=0-5:00:00        
 #SBATCH --mem=8G             
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:nvidia_h100_80gb_hbm3_2g.20gb:1
