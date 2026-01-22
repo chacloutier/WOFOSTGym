@@ -1,5 +1,6 @@
 """
 Code to train a CPO Agent (Constrained Policy Optimization)
+Uses robust recovery heuristics for stability with normalized advantages.
 """
 
 import wandb
@@ -15,51 +16,33 @@ from torch.distributions.categorical import Categorical
 from typing import Optional, Tuple
 from rl_algs.rl_utils import RL_Args, Agent, setup, eval_policy
 
-# ------------------------------------------------------------------------------
-# 1. CPO Arguments
-# ------------------------------------------------------------------------------
 @dataclass
 class Args(RL_Args):
+    alg: str = "CPO"
     total_timesteps: int = 1000000
-    """total timesteps of the experiments"""
     num_envs: int = 1
-    """the number of parallel game environments"""
     num_steps: int = 2048
-    """the number of steps to run in each environment per policy rollout"""
     gamma: float = 0.99
-    """the discount factor gamma"""
     gae_lambda: float = 0.97
-    """the lambda for the general advantage estimation"""
-
-    # CPO Specific Hyperparameters
+    
+    # CPO Specifics
     target_kl: float = 0.01
-    """Maximum allowed KL divergence per step"""
     cost_limit: float = 25.0 
-    """The maximum allowed cost (safety constraint)"""
     damping: float = 0.1
-    """Damping for the Fisher Information Matrix (FIM)"""
     cg_iters: int = 10
-    """Number of Conjugate Gradient iterations"""
     line_search_iters: int = 10
-    """Number of line search backtracking steps"""
     line_search_coeff: float = 0.8
-    """Backtracking coefficient"""
     vf_lr: float = 1e-3
-    """Learning rate for Value Function and Cost Value Function"""
     vf_iters: int = 80
-    """Number of iterations to train value functions"""
-
-    # Computed at runtime
+    checkpoint_frequency: int = 500
+    
     batch_size: int = 0
     num_iterations: int = 0
 
 # ------------------------------------------------------------------------------
-# 2. Mathematical Helpers (Conjugate Gradient & HVP)
+# Helpers
 # ------------------------------------------------------------------------------
 def flat_grad(grads, params, detach=True):
-    """
-    Flatten gradients.
-    """
     grad_flatten = []
     for g, p in zip(grads, params):
         if g is None:
@@ -80,9 +63,6 @@ def set_params(model, new_params):
         prev_ind += flat_size
 
 def conjugate_gradients(Avp_func, b, nsteps, residual_tol=1e-10):
-    """
-    Conjugate Gradient algorithm to solve Ax = b where A is the FIM.
-    """
     x = torch.zeros_like(b)
     r = b.clone()
     p = r.clone()
@@ -101,13 +81,8 @@ def conjugate_gradients(Avp_func, b, nsteps, residual_tol=1e-10):
     return x
 
 def extract_cost(infos: dict, cost_keys: list = ["nitrogen", "phosphorous"]) -> np.ndarray:
-    """
-    Extracts a scalar cost from the complex WOFOST info structure.
-    Sums up the values found in the specified keys (e.g. N + P).
-    """
     if not infos:
         return np.array([0.0])
-
     total_cost = 0.0
     for metric in cost_keys:
         if metric in infos:
@@ -116,15 +91,12 @@ def extract_cost(infos: dict, cost_keys: list = ["nitrogen", "phosphorous"]) -> 
                 if isinstance(k, str) and k.startswith("_"):
                     continue
                 total_cost += v
-                
-    # Handle scalar return if numpy array math didn't trigger
     if isinstance(total_cost, float):
         return np.array([total_cost])
-        
     return total_cost
 
 # ------------------------------------------------------------------------------
-# 3. The CPO Agent
+# Agent
 # ------------------------------------------------------------------------------
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
@@ -132,12 +104,12 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     return layer
 
 class CPO(nn.Module, Agent):
-    def __init__(self, envs: gym.Env):
+    def __init__(self, envs: gym.Env, state_fpath: str = None, **kwargs: dict):
         super().__init__()
+        self.env = envs
         self.obs_shape = np.array(envs.single_observation_space.shape).prod()
         self.action_shape = envs.single_action_space.n
 
-        # Actor (Policy)
         self.actor = nn.Sequential(
             layer_init(nn.Linear(self.obs_shape, 64)),
             nn.Tanh(),
@@ -146,7 +118,6 @@ class CPO(nn.Module, Agent):
             layer_init(nn.Linear(64, self.action_shape), std=0.01),
         )
 
-        # Reward Critic (Value Function)
         self.critic = nn.Sequential(
             layer_init(nn.Linear(self.obs_shape, 64)),
             nn.Tanh(),
@@ -155,7 +126,6 @@ class CPO(nn.Module, Agent):
             layer_init(nn.Linear(64, 1), std=1.0),
         )
 
-        # Cost Critic (Safety Value Function)
         self.cost_critic = nn.Sequential(
             layer_init(nn.Linear(self.obs_shape, 64)),
             nn.Tanh(),
@@ -163,6 +133,12 @@ class CPO(nn.Module, Agent):
             nn.Tanh(),
             layer_init(nn.Linear(64, 1), std=1.0),
         )
+        
+        if state_fpath is not None:
+            try:
+                self.load_state_dict(torch.load(state_fpath, weights_only=True))
+            except:
+                raise Exception(f"Error loading state dictionary from {state_fpath}")
 
     def get_action(self, x: torch.Tensor) -> torch.Tensor:
         logits = self.actor(x)
@@ -177,7 +153,7 @@ class CPO(nn.Module, Agent):
         return self.critic(x), self.cost_critic(x)
 
 # ------------------------------------------------------------------------------
-# 4. Training Logic
+# Training Logic
 # ------------------------------------------------------------------------------
 def train(kwargs: Namespace) -> None:
     args = kwargs.alg
@@ -188,11 +164,10 @@ def train(kwargs: Namespace) -> None:
     writer, device, envs = setup(kwargs, args, run_name)
     agent = CPO(envs).to(device)
     
-    # Optimizers for Value functions (Policy is optimized manually via CPO)
     optimizer_critic = optim.Adam(agent.critic.parameters(), lr=args.vf_lr)
     optimizer_cost_critic = optim.Adam(agent.cost_critic.parameters(), lr=args.vf_lr)
 
-    # Storage setup
+    # Storage
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
     actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
@@ -208,7 +183,10 @@ def train(kwargs: Namespace) -> None:
     next_obs = torch.Tensor(next_obs).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
 
-    # Helper: FVP (Fisher Vector Product) for CPO
+    # Logging placeholders
+    running_episodic_return = np.zeros(args.num_envs)
+    running_episodic_length = np.zeros(args.num_envs)
+
     def compute_fvp(vector, obs_b, act_b):
         _, _, dist = agent.get_log_prob_entropy(obs_b, act_b)
         with torch.no_grad():
@@ -221,10 +199,8 @@ def train(kwargs: Namespace) -> None:
         kl_v = (flat_grad_kl * vector).sum()
         grads_v = torch.autograd.grad(kl_v, agent.actor.parameters())
         flat_grad_grad_kl = flat_grad(grads_v, agent.actor.parameters(), detach=True)
-
         return flat_grad_grad_kl + vector * args.damping
 
-    # Main Loop
     for iteration in range(1, args.num_iterations + 1):
         
         # 1. Collect Data
@@ -243,30 +219,35 @@ def train(kwargs: Namespace) -> None:
             actions[step] = action
             logprobs[step] = logprob
 
-            # Step Env
             next_obs, reward, termin, trunc, infos = envs.step(action.cpu().numpy())
             next_done = np.logical_or(termin, trunc)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             
-            # --- EXTRACT COST ---
+            # Cost Extraction
             c_step = extract_cost(infos, cost_keys=["nitrogen", "phosphorous", "potassium"])
             costs[step] = torch.tensor(c_step).float().to(device).view(-1)
 
+            # Manual Logging
+            running_episodic_return += reward
+            running_episodic_length += 1
+            for i in range(args.num_envs):
+                if next_done[i]:
+                    print(f"global_step={global_step}, episodic_return={running_episodic_return[i]}")
+                    writer.add_scalar("charts/episodic_return", running_episodic_return[i], global_step)
+                    writer.add_scalar("charts/episodic_length", running_episodic_length[i], global_step)
+                    running_episodic_return[i] = 0
+                    running_episodic_length[i] = 0
+
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
+            
+            if global_step % args.checkpoint_frequency == 0:
+                 writer.add_scalar("charts/average_reward", eval_policy(agent, envs, kwargs, device), global_step)
 
-            if "final_info" in infos:
-                for info in infos["final_info"]:
-                    if info and "episode" in info:
-                        print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                        writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-
-        # 2. GAE Estimation (Reward & Cost)
+        # 2. GAE
         with torch.no_grad():
             next_val, next_c_val = agent.get_vals(next_obs)
-            next_val = next_val.reshape(1, -1)
-            next_c_val = next_c_val.reshape(1, -1)
+            next_val, next_c_val = next_val.reshape(1, -1), next_c_val.reshape(1, -1)
             
-            # Reward Advantages
             adv = torch.zeros_like(rewards).to(device)
             lastgaelam = 0
             for t in reversed(range(args.num_steps)):
@@ -280,7 +261,6 @@ def train(kwargs: Namespace) -> None:
                 adv[t] = lastgaelam = delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
             returns = adv + values
             
-            # Cost Advantages (C_Adv)
             c_adv = torch.zeros_like(costs).to(device)
             lastgaelam_c = 0
             for t in reversed(range(args.num_steps)):
@@ -294,35 +274,29 @@ def train(kwargs: Namespace) -> None:
                 c_adv[t] = lastgaelam_c = delta_c + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam_c
             c_returns = c_adv + cost_values
 
-        # Flatten Batches
         b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
         b_act = actions.reshape((-1,) + envs.single_action_space.shape).long()
         b_adv = adv.reshape(-1)
         b_c_adv = c_adv.reshape(-1)
         b_old_log_probs = logprobs.reshape(-1)
 
-        # Normalize Advantages
         b_adv = (b_adv - b_adv.mean()) / (b_adv.std() + 1e-8)
         b_c_adv = (b_c_adv - b_c_adv.mean()) / (b_c_adv.std() + 1e-8)
 
-        # ----------------------------------------------------------------------
-        # 3. CPO Update Step
-        # ----------------------------------------------------------------------
+        # 3. CPO Update (Robust / "Green" Version)
         curr_log_probs, dist_entropy, dist = agent.get_log_prob_entropy(b_obs, b_act)
         ratio = torch.exp(curr_log_probs - b_old_log_probs)
         
-        # Surrogate Loss (Maximize Reward)
         surr_loss = (ratio * b_adv).mean()
         grad_g = flat_grad(torch.autograd.grad(surr_loss, agent.actor.parameters(), retain_graph=True), agent.actor.parameters())
 
-        # Cost Surrogate (Minimize Cost)
-        cost_loss = (ratio * b_c_adv).mean()
-        grad_b = flat_grad(torch.autograd.grad(cost_loss, agent.actor.parameters(), retain_graph=True), agent.actor.parameters())
+        cost_surr = (ratio * b_c_adv).mean()
+        grad_b = flat_grad(torch.autograd.grad(cost_surr, agent.actor.parameters(), retain_graph=True), agent.actor.parameters())
         
-        current_cost = cost_values.mean().item() 
-        cost_delta = current_cost - args.cost_limit
+        # Current Cost Logic (Using Absolute Jc)
+        Jc = cost_values.mean().item() 
+        cost_delta = Jc - args.cost_limit
         
-        # Compute Search Direction
         step_dir_g = conjugate_gradients(lambda v: compute_fvp(v, b_obs, b_act), grad_g, args.cg_iters)
         step_dir_b = conjugate_gradients(lambda v: compute_fvp(v, b_obs, b_act), grad_b, args.cg_iters)
 
@@ -330,9 +304,11 @@ def train(kwargs: Namespace) -> None:
         s = (step_dir_b * compute_fvp(step_dir_b, b_obs, b_act)).sum()
         r = (step_dir_g * compute_fvp(step_dir_b, b_obs, b_act)).sum()
         
-        optim_case = 0 # 0: Recovery, 1: Normal, 2: Feasible but strict
+        optim_case = 0 
+        
+        # Robust Recovery Logic (Green)
         if cost_delta > 0:
-            # VIOLATION: Recovery
+            # VIOLATION: Simple Recovery
             lam = torch.sqrt(args.target_kl / (s + 1e-8))
             nu = 0
             final_step_dir = -lam * step_dir_b
@@ -343,24 +319,31 @@ def train(kwargs: Namespace) -> None:
             B = 2*args.target_kl - cost_delta**2 / (s + 1e-8)
             
             if cost_delta < 0 and B < 0:
+                # Feasible but risky? TRPO step
                 lam = torch.sqrt(args.target_kl / (qqq + 1e-8))
                 nu = 0
                 final_step_dir = lam * step_dir_g
                 optim_case = 2
             else:
+                # CPO Step
                 lam = torch.sqrt(args.target_kl / (qqq + 1e-8)) 
                 nu = max(0, r/s * lam - cost_delta/s) 
+                
                 final_step_dir = (1/ (lam + 1e-8)) * (step_dir_g - nu * step_dir_b)
                 optim_case = 1
 
         # 4. Line Search
         old_params = flat_params(agent.actor)
+        
         def get_loss_and_kl():
             with torch.no_grad():
                 new_log_prob, _, new_dist = agent.get_log_prob_entropy(b_obs, b_act)
                 new_ratio = torch.exp(new_log_prob - b_old_log_probs)
+                
                 loss_pi = (new_ratio * b_adv).mean()
                 kl_val = torch.distributions.kl.kl_divergence(dist, new_dist).mean()
+                
+                # Use surrogate for robust line search (Green logic)
                 cost_pi = (new_ratio * b_c_adv).mean()
             return loss_pi, kl_val, cost_pi
 
@@ -368,21 +351,25 @@ def train(kwargs: Namespace) -> None:
             step_frac = args.line_search_coeff ** i
             new_params = old_params + step_frac * final_step_dir
             set_params(agent.actor, new_params)
-            loss, kl, cost_surr = get_loss_and_kl()
+            
+            loss, kl, c_val = get_loss_and_kl()
             
             if kl > args.target_kl * 1.5:
                 continue
             
+            # Robust Acceptance Criteria (Green logic)
             if optim_case > 0:
-                 if loss > surr_loss and cost_surr <= max(0, cost_delta): 
+                 # If safe: improve reward, keep cost-surrogate check loose (don't explode)
+                 if loss > surr_loss and c_val <= max(0, cost_delta): 
                      break
             else:
-                if cost_surr < cost_loss:
+                # If unsafe: strictly decrease cost surrogate
+                if c_val < cost_surr:
                      break
         else:
             set_params(agent.actor, old_params)
 
-        # 5. Value Function Updates
+        # 5. Value Updates
         b_returns = returns.reshape(-1)
         for _ in range(args.vf_iters):
             v_pred = agent.critic(b_obs).flatten()
@@ -403,7 +390,7 @@ def train(kwargs: Namespace) -> None:
         writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
         writer.add_scalar("losses/cost_value_loss", c_loss.item(), global_step)
         writer.add_scalar("charts/cost_delta", cost_delta, global_step)
-        writer.add_scalar("charts/avg_cost", current_cost, global_step)
+        writer.add_scalar("charts/avg_cost", Jc, global_step)
 
     envs.close()
     writer.close()

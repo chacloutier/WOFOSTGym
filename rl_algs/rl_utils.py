@@ -28,7 +28,7 @@ import utils
 
 @dataclass
 class RL_Args:
-    exp_name: str = os.path.basename(__file__)[: -len(".py")]
+    exp_name: str = ""
     """the name of this experiment"""
     seed: int = 1
     """seed of the experiment"""
@@ -91,6 +91,9 @@ def setup(kwargs: Namespace, args: Namespace, run_name: str) -> tuple[SummaryWri
     if kwargs.track:
         import wandb
 
+        alg_name = kwargs.agent_type
+        env_type = kwargs.env_id
+
         wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
@@ -99,6 +102,7 @@ def setup(kwargs: Namespace, args: Namespace, run_name: str) -> tuple[SummaryWri
             name=run_name,
             monitor_gym=True,
             save_code=True,
+            tags=[alg_name, env_type, kwargs.env_reward],
             mode = "offline" if args.offline else "online",
         )
     writer = SummaryWriter(f"{kwargs.save_folder}{run_name}")
@@ -181,7 +185,7 @@ def eval_policy(
             if isinstance(state, np.ndarray):
                 state = torch.Tensor(state).reshape((-1, *env.observation_space.shape)).to(device)
             action = policy.get_action(state)
-            state, reward, term, trunc, _ = env.step(action.detach().cpu().numpy())
+            state, reward, term, trunc, _ = env.step(action.detach().cpu().numpy().item())
 
             if isinstance(eval_env, gym.vector.SyncVectorEnv):
                 avg_reward += eval_env.envs[0].unnormalize(reward)

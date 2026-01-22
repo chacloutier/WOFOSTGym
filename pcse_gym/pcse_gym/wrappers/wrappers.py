@@ -472,6 +472,24 @@ class RewardWrapper(gym.Wrapper, ABC):
         else:
             self.env.unwrapped._log(output[-1]["WSO"], act_tuple, reward)
 
+        if hasattr(self, "max_n") and hasattr(self, "max_w"):
+            info = self.env.unwrapped.log if self.env.unwrapped.log else {}
+
+            if isinstance(self.env.unwrapped, Multi_NPK_Env):
+                # For safety, we track the WORST case across farms
+                tot_n = np.max([output[i][-1]["TOTN"] for i in range(self.env.unwrapped.num_farms)])
+                tot_w = np.max([output[i][-1]["TOTIRRIG"] for i in range(self.env.unwrapped.num_farms)])
+            else:
+                tot_n = output[-1]["TOTN"]
+                tot_w = output[-1]["TOTIRRIG"]
+
+            info["track/total_n"] = tot_n
+            info["track/total_w"] = tot_w
+            is_violating = (tot_n > self.max_n) or (tot_w > self.max_w)
+            info["track/is_violating"] = 1.0 if is_violating else 0.0
+
+            self.env.unwrapped.log = info
+
         return observation, reward, termination, truncation, self.env.unwrapped.log
 
     def reset(self, **kwargs: dict) -> tuple[np.ndarray, dict]:
@@ -763,3 +781,106 @@ class NormalizeReward(gym.Wrapper):
         rews = rews * (self.reward_range[1] - self.reward_range[0] + 1e-12) + self.reward_range[0]
 
         return rews
+
+
+class SimpleRewardMachineWrapper(RewardWrapper):
+    """
+    Implements a simple Reward Machine (RM) based on crop development stages.
+
+    This wrapper gives the agent intermediate dense rewards for successfully
+    transitioning the plant through biological lifecycle stages.
+    """
+
+    def __init__(self, env: gym.Env, args: Namespace) -> None:
+        """Initialize the Reward Machine wrapper.
+
+        Args:
+            env: The environment to apply the wrapper
+            args: Namespace arguments (allows tuning rewards via CLI)
+        """
+        super().__init__(env)
+        self.env = env
+
+        # Load constraints from args for tracking purposes (used by Base Class)
+        self.max_n = getattr(args, 'max_n', float('inf'))
+        self.max_w = getattr(args, 'max_w', float('inf'))
+        self.max_k = getattr(args, 'max_k', float('inf'))
+        self.max_p = getattr(args, 'max_p', float('inf'))
+
+        # Internal state of the Reward Machine u \in U
+        self.u_curr = 0
+
+        # Rewards for transitioning between abstract states
+        self.rm_rewards = {
+            1: 100.0,   # Bonus for reaching Emergence (DVS > 0)
+            2: 200.0,   # Bonus for reaching Flowering (DVS > 1)
+            3: 500.0    # Bonus for reaching Maturity (DVS > 2)
+        }
+
+    def reset(self, **kwargs: dict) -> tuple[np.ndarray, dict]:
+        """Resets the environment and the Reward Machine state."""
+        self.u_curr = 0  # Reset RM to initial state
+        return self.env.reset(**kwargs)
+
+    def _get_reward(self, output: dict, act_tuple: tuple[float, float, float, float]) -> float:
+        """
+        Calculates the reward based on Reward Machine transitions.
+        R(s, u, s') = Yield + RM_Transition_Bonus
+
+        Includes "Void Clause": If constraints are violated, RM_Transition_Bonus is forfeited.
+        """
+        # 1. Extract State Variables (DVS, Yield, and Resource Usage)
+        if isinstance(self.env.unwrapped, Multi_NPK_Env):
+            # Multi-Env: Average DVS, Sum Yield
+            dvs_vals = [output[i][-1]["DVS"] for i in range(self.env.unwrapped.num_farms) if output[i][-1]["DVS"] is not None]
+            current_dvs = np.mean(dvs_vals) if len(dvs_vals) > 0 else 0.0
+
+            yield_reward = 0
+            for i in range(self.env.unwrapped.num_farms):
+                yield_reward += output[i][-1]["WSO"] if output[i][-1]["WSO"] is not None else 0
+
+            # Check Max usage across all farms (Strict Safety)
+            # We treat the system as violating if ANY farm exceeds the limit
+            tot_n = np.max([output[i][-1]["TOTN"] for i in range(self.env.unwrapped.num_farms)])
+            tot_w = np.max([output[i][-1]["TOTIRRIG"] for i in range(self.env.unwrapped.num_farms)])
+
+        else:
+            # Single-Env
+            current_dvs = output[-1]["DVS"] if output[-1]["DVS"] is not None else 0.0
+            yield_reward = output[-1]["WSO"] if output[-1]["WSO"] is not None else 0
+
+            tot_n = output[-1]["TOTN"]
+            tot_w = output[-1]["TOTIRRIG"]
+            tot_k = output[-1]["TOTK"]
+            tot_p = output[-1]["TOTP"]
+
+        # 2. Check for Violations
+        # Note: TOTN/TOTIRRIG only increase over time. Once violated, they stay violated.
+        is_violating = (tot_n > self.max_n) or (tot_w > self.max_w) or (tot_k > self.max_k) or (tot_p > self.max_p)
+
+        # --- Reward Machine Logic ---
+        rm_bonus = 0.0
+        u_next = self.u_curr
+
+        # U0 -> U1: Emergence
+        if self.u_curr == 0 and current_dvs > 0.0:
+            u_next = 1
+            rm_bonus = self.rm_rewards[1]
+        # U1 -> U2: Flowering
+        elif self.u_curr == 1 and current_dvs >= 1.0:
+            u_next = 2
+            rm_bonus = self.rm_rewards[2]
+        # U2 -> U3: Maturity
+        elif self.u_curr == 2 and current_dvs >= 2.0:
+            u_next = 3
+            rm_bonus = self.rm_rewards[3]
+
+        self.u_curr = u_next
+
+        # 3. The "Void" Clause
+        # If the agent is violating constraints, it forfeits the bonus!
+        if is_violating:
+            return -20000
+
+        # Return Yield (Environmental Reward) + Bonus (Shaped Reward)
+        return yield_reward + rm_bonus

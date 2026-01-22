@@ -188,6 +188,16 @@ def train(kwargs: Namespace) -> None:
                         writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
             if global_step % args.checkpoint_frequency == 0:
                 writer.add_scalar("charts/average_reward", eval_policy(agent, envs, kwargs, device), global_step)
+                if "track/total_n" in infos:
+                    writer.add_scalar("constraints/total_n", infos["track/total_n"], global_step)
+                if "track/total_w" in infos:
+                    writer.add_scalar("constraints/total_w", infos["track/total_w"], global_step)
+                if "track/total_p" in infos:
+                    writer.add_scalar("constraints/total_p", infos["track/total_p"], global_step)
+                if "track/total_k" in infos:
+                    writer.add_scalar("constraints/total_k", infos["track/total_k"], global_step)
+                if "track/is_violating" in infos:
+                    writer.add_scalar("constraints/violation_rate", infos["track/is_violating"], global_step)
 
         with torch.no_grad():
             next_value = agent.get_value(next_obs).reshape(1, -1)
