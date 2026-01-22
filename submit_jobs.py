@@ -72,9 +72,9 @@ jobs = [
 slurm_template = """#!/bin/bash
 #SBATCH --account=def-mcrowley_gpu
 #SBATCH --time=3:00:00        
-#SBATCH --mem=10G             
-#SBATCH --cpus-per-task=2
-#SBATCH --gres=gpu:1
+#SBATCH --mem=16G             
+#SBATCH --cpus-per-task=4
+#SBATCH --gres=gpu:h100:1
 #SBATCH --job-name={job_name}
 #SBATCH --output={log_dir}/%x-%j.out
 
