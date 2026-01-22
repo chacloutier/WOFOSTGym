@@ -108,7 +108,7 @@ for seed in seeds:
             base_save_folder, 
             f"{job['agent_type'].lower()}_local", 
             "pear", 
-            f"seed_{seed}"
+            f"seed_{seed}/"
         )
         os.makedirs(save_folder, exist_ok=True)
 
