@@ -81,7 +81,7 @@ slurm_template = """#!/bin/bash
 # Activate Virtual Environment
 source $HOME/env/wofost_env/bin/activate 
 
-wandb login 607fcb9486c1989c71b6
+wandb login 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
 
 # Offline W&B Configuration
 export WANDB_MODE=online
@@ -101,27 +101,42 @@ for seed in seeds:
     for job in jobs:
         job_name = f"{job['name']}_s{seed}"
         
-        # Construct the save folder path on scratch
-        # Structure: scratch/runs/ppo_local/pear/seed_X
         save_folder = os.path.join(
             base_save_folder, 
             f"{job['agent_type'].lower()}_local", 
             "pear", 
             f"seed_{seed}"
         )
-        
-        # Ensure the directory exists so W&B can write to it immediately
         os.makedirs(save_folder, exist_ok=True)
 
-        # Build the python command
-        # We inject --seed and --save-folder dynamically
-        cmd_args = ["python", "train_agent.py"] + job['args']
-        cmd_args.extend(["--seed", str(seed)])
-        cmd_args.extend(["--save-folder", save_folder])
+        # --- FIX: Split args based on where "alg:XXX" is located ---
+        raw_args = job['args']
+        algo_token = f"alg:{job['agent_type']}"
         
-        full_command = " ".join(cmd_args)
+        try:
+            split_index = raw_args.index(algo_token)
+            # Args before "alg:XXX" (Global args)
+            pre_args = raw_args[:split_index]
+            # Args starting from "alg:XXX" (Subcommand args)
+            post_args = raw_args[split_index:]
+        except ValueError:
+            print(f"Error: Could not find '{algo_token}' in args for {job_name}")
+            continue
 
-        # Create the SLURM script content
+        # Construct new command list
+        cmd_parts = ["python", "train_agent.py"]
+        
+        # 1. Add Global Args + Save Folder
+        cmd_parts.extend(pre_args)
+        cmd_parts.extend(["--save-folder", save_folder])
+        
+        # 2. Add Algo Subcommand + Algo Args + Seed
+        cmd_parts.extend(post_args)
+        # Change --seed to --alg.seed per error message
+        cmd_parts.extend(["--alg.seed", str(seed)]) 
+        
+        full_command = " ".join(cmd_parts)
+
         script_content = slurm_template.format(
             job_name=job_name,
             log_dir=save_folder,
@@ -129,13 +144,9 @@ for seed in seeds:
             command=full_command
         )
 
-        # Write to file
         script_filename = f"generated_scripts/submit_{job_name}.sh"
         with open(script_filename, "w") as f:
             f.write(script_content)
 
-        # Submit
         print(f"Submitting {job_name} (Seed {seed})...")
-        subprocess.run(["sbatch", script_filename]) 
-        # Uncomment the line above to actually submit. 
-        # Leaving it commented so you can inspect generated scripts first.
+        subprocess.run(["sbatch", script_filename])
