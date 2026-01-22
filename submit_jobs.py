@@ -81,13 +81,14 @@ slurm_template = """#!/bin/bash
 # Activate Virtual Environment
 source $HOME/env/wofost_env/bin/activate 
 
-wandb login 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
-
 # Offline W&B Configuration
 export WANDB_MODE=online
 export WANDB_DIR={save_folder} 
 export WANDB_PROJECT="WOFOST-RL"
 export WANDB_ENTITY="chacloutier-4B"
+export WANDB_API_KEY="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"
+
+wandb login 
 
 # 4. Run Command
 echo "Starting job on $(hostname)"
