@@ -70,9 +70,9 @@ jobs = [
 # SLURM Template for Compute Canada
 # Adjust --account, --time, and --mem as needed
 slurm_template = """#!/bin/bash
-#SBATCH --account=def-someuser  # CHANGE THIS to your actual account (e.g., def-profname)
-#SBATCH --time=12:00:00         # Adjust time limit
-#SBATCH --mem=16G               # Adjust memory
+#SBATCH --account=def-mcrowley  
+#SBATCH --time=12:00:00        
+#SBATCH --mem=16G             
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1            # Request 1 GPU
 #SBATCH --job-name={job_name}
