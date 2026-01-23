@@ -83,7 +83,7 @@ jobs = [
             "--npk.ag.crop-variety", "pear_1",
             "--npk.intvn_interval", "14",
             "--track",
-            "alg:BASELINE"
+            "alg:BASELINE",
             "--alg.checkpoint-frequency", "5000",
         ],
     },
