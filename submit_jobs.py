@@ -3,9 +3,9 @@ import subprocess
 import time
 
 # --- Configuration ---
-seeds = [1, 2, 3, 4]  # The 4 seeds you want to run
-project_dir = os.getcwd() # Assumes you run this script from the root of your workspace
-# pointing to scratch is critical on Compute Canada to avoid quota issues
+# seeds = [1, 2, 3, 4]  # The 4 seeds you want to run
+seeds = [1]
+project_dir = os.getcwd() 
 base_save_folder = os.path.join(os.getenv('SCRATCH', '.'), 'runs') 
 
 # Define the 3 configurations based on your VS Code launch.json
@@ -17,12 +17,13 @@ jobs = [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
             "--env_reward", "RewardFertilizationThresholdWrapper",
-            "--max_n", "80.0",
-            "--max_p", "inf",
-            "--max_k", "inf",
-            "--max_w", "40.0",
+            "--max-n", "80.0",
+            "--max-p", "80.0",
+            "--max-k", "80.0",
+            "--max-w", "20.0",
             "--npk.ag.crop-name", "pear",
             "--npk.ag.crop-variety", "pear_1",
+            "--npk.intvn_interval", "14",
             "--track",
             "alg:PPO",
             "--alg.num-steps", "2048",
@@ -36,12 +37,13 @@ jobs = [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
             "--env_reward", "RewardFertilizationThresholdWrapper",
-            "--max_n", "80.0",
-            "--max_p", "1000.0",
-            "--max_k", "1000.0",
-            "--max_w", "40.0",
+            "--max-n", "80.0",
+            "--max-p", "80.0",
+            "--max-k", "80.0",
+            "--max-w", "20.0",
             "--npk.ag.crop-name", "pear",
             "--npk.ag.crop-variety", "pear_1",
+            "--npk.intvn_interval", "14",
             "--track",
             "alg:SAC",
             "--alg.checkpoint-frequency", "5000",
@@ -54,17 +56,37 @@ jobs = [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
             "--env_reward", "RewardFertilizationThresholdWrapper",
-            "--max_n", "80.0",
-            "--max_p", "1000.0",
-            "--max_k", "1000.0",
-            "--max_w", "40.0",
+            "--max-n", "80.0",
+            "--max-p", "80.0",
+            "--max-k", "80.0",
+            "--max-w", "20.0",
             "--npk.ag.crop-name", "pear",
             "--npk.ag.crop-variety", "pear_1",
+            "--npk.intvn_interval", "14",
             "--track",
             "alg:DQN",
             "--alg.checkpoint-frequency", "5000",
         ]
-    }
+    },
+    {
+        "name": "BASELINE_Pear",
+        "agent_type": "BASELINE",
+        "args": [
+            "--env-id", "perennial-lnpkw-v0",
+            "--agro-file", "pear_agro.yaml",
+            "--env-reward", "RewardFertilizationThresholdWrapper",
+            "--max-n", "80.0",
+            "--max-p", "80.0",
+            "--max-k", "80.0",
+            "--max-w", "20.0",
+            "--npk.ag.crop-name", "pear",
+            "--npk.ag.crop-variety", "pear_1",
+            "--npk.intvn_interval", "14",
+            "--track",
+            "alg:BASELINE"
+            "--alg.checkpoint-frequency", "5000",
+        ],
+    },
 ]
 
 # SLURM Template for Compute Canada
