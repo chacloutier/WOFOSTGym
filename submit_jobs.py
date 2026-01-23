@@ -20,14 +20,13 @@ jobs = [
             "--max-n", "80.0",
             "--max-p", "80.0",
             "--max-k", "80.0",
-            "--max-w", "20.0",
+            "--max-w", "40.0",
             "--npk.ag.crop-name", "pear",
             "--npk.ag.crop-variety", "pear_1",
             "--npk.intvn_interval", "14",
             "--track",
             "alg:PPO",
             "--alg.num-steps", "2048",
-            "--alg.checkpoint-frequency", "5000",
         ]
     },
     {
@@ -40,13 +39,12 @@ jobs = [
             "--max-n", "80.0",
             "--max-p", "80.0",
             "--max-k", "80.0",
-            "--max-w", "20.0",
+            "--max-w", "40.0",
             "--npk.ag.crop-name", "pear",
             "--npk.ag.crop-variety", "pear_1",
             "--npk.intvn_interval", "14",
             "--track",
             "alg:SAC",
-            "--alg.checkpoint-frequency", "5000",
         ]
     },
     {
@@ -59,13 +57,12 @@ jobs = [
             "--max-n", "80.0",
             "--max-p", "80.0",
             "--max-k", "80.0",
-            "--max-w", "20.0",
+            "--max-w", "40.0",
             "--npk.ag.crop-name", "pear",
             "--npk.ag.crop-variety", "pear_1",
             "--npk.intvn_interval", "14",
             "--track",
             "alg:DQN",
-            "--alg.checkpoint-frequency", "5000",
         ]
     },
     {
@@ -78,13 +75,11 @@ jobs = [
             "--max-n", "80.0",
             "--max-p", "80.0",
             "--max-k", "80.0",
-            "--max-w", "20.0",
+            "--max-w", "40.0",
             "--npk.ag.crop-name", "pear",
             "--npk.ag.crop-variety", "pear_1",
-            "--npk.intvn_interval", "14",
             "--track",
             "alg:BASELINE",
-            "--alg.checkpoint-frequency", "5000",
         ],
     },
 ]
@@ -93,8 +88,8 @@ jobs = [
 # Adjust --account, --time, and --mem as needed
 slurm_template = """#!/bin/bash
 #SBATCH --account=def-mcrowley_gpu
-#SBATCH --time=0-5:00:00        
-#SBATCH --mem=8G             
+#SBATCH --time=0-11:00:00        
+#SBATCH --mem=16G             
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:nvidia_h100_80gb_hbm3_2g.20gb:1
 #SBATCH --job-name={job_name}
