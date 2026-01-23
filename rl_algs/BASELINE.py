@@ -62,8 +62,8 @@ def train(kwargs: Namespace) -> None:
         # Track cumulative usage
         total_n = 0
         total_w = 0
-        # total_k = 0
-        # total_p = 0
+        total_k = 0
+        total_p = 0
 
         while not done:
             global_step += 1
@@ -75,8 +75,8 @@ def train(kwargs: Namespace) -> None:
             needs = []
             if total_n < N_LIMIT: needs.append('n')
             if total_w < WATER_LIMIT: needs.append('irrig')
-            # if total_k < K_LIMIT: needs.append('k')
-            # if total_p < P_LIMIT: needs.append('p')
+            if total_k < K_LIMIT: needs.append('k')
+            if total_p < P_LIMIT: needs.append('p')
             
             # Randomly select one need to fulfill this step
             # This spreads resources out rather than doing N then W then K...
@@ -87,8 +87,8 @@ def train(kwargs: Namespace) -> None:
                 # Update trackers
                 if choice == 'n': total_n += FERT_UNIT
                 elif choice == 'irrig': total_w += IRRIG_UNIT
-                # elif choice == 'k': total_k += 1
-                # elif choice == 'p': total_p += 1
+                elif choice == 'k': total_k += FERT_UNIT
+                elif choice == 'p': total_p += FERT_UNIT
             
             action_int = utils.action_to_numpy(envs.envs[0], action_dict)
             next_obs, reward, terminations, truncations, infos = envs.step(action_int)

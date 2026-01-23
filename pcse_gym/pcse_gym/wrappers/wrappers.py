@@ -478,14 +478,20 @@ class RewardWrapper(gym.Wrapper, ABC):
             if isinstance(self.env.unwrapped, Multi_NPK_Env):
                 # For safety, we track the WORST case across farms
                 tot_n = np.max([output[i][-1]["TOTN"] for i in range(self.env.unwrapped.num_farms)])
+                tot_p = np.max([output[i][-1]["TOTP"] for i in range(self.env.unwrapped.num_farms)])
+                tot_k = np.max([output[i][-1]["TOTK"] for i in range(self.env.unwrapped.num_farms)])
                 tot_w = np.max([output[i][-1]["TOTIRRIG"] for i in range(self.env.unwrapped.num_farms)])
             else:
                 tot_n = output[-1]["TOTN"]
+                tot_p = output[-1]["TOTP"]
+                tot_k = output[-1]["TOTK"]
                 tot_w = output[-1]["TOTIRRIG"]
 
             info["track/total_n"] = tot_n
             info["track/total_w"] = tot_w
-            is_violating = (tot_n > self.max_n) or (tot_w > self.max_w)
+            info["track/total_p"] = tot_p
+            info["track/total_k"] = tot_k
+            is_violating = (tot_n > self.max_n) or (tot_w > self.max_w) or (tot_p > self.max_p) or (tot_k > self.max_k)
             info["track/is_violating"] = 1.0 if is_violating else 0.0
 
             self.env.unwrapped.log = info
@@ -880,7 +886,77 @@ class SimpleRewardMachineWrapper(RewardWrapper):
         # 3. The "Void" Clause
         # If the agent is violating constraints, it forfeits the bonus!
         if is_violating:
-            return -20000
+            rm_bonus = 0
 
         # Return Yield (Environmental Reward) + Bonus (Shaped Reward)
         return yield_reward + rm_bonus
+    
+class ThresholdRespectingRewardWrapper(RewardWrapper):
+
+    def __init__(self, env: gym.Env, args: Namespace) -> None:
+        """Initialize the Reward wrapper.
+
+        Args:
+            env: The environment to apply the wrapper
+            args: Namespace arguments (allows tuning rewards via CLI)
+        """
+        super().__init__(env)
+        self.env = env
+
+        # Load constraints from args for tracking purposes (used by Base Class)
+        self.max_n = getattr(args, 'max_n', float('inf'))
+        self.max_w = getattr(args, 'max_w', float('inf'))
+        self.max_k = getattr(args, 'max_k', float('inf'))
+        self.max_p = getattr(args, 'max_p', float('inf'))
+
+    def _get_reward(self, output: dict, act_tuple: tuple[float, float, float, float]) -> float:
+        """
+        Calculates the reward based whether NPK or water was applied when the limit was going to be attained
+        """
+        # 1. Extract State Variables (DVS, Yield, and Resource Usage)
+        if isinstance(self.env.unwrapped, Multi_NPK_Env):
+            # Multi-Env: Sum Yield
+            yield_reward = 0
+            for i in range(self.env.unwrapped.num_farms):
+                yield_reward += output[i][-1]["WSO"] if output[i][-1]["WSO"] is not None else 0
+
+            # Check Max usage across all farms (Strict Safety)
+            # We treat the system as violating if ANY farm exceeds the limit
+            tot_n = np.max([output[i][-1]["TOTN"] for i in range(self.env.unwrapped.num_farms)])
+            tot_w = np.max([output[i][-1]["TOTIRRIG"] for i in range(self.env.unwrapped.num_farms)])
+            tot_k = np.max([output[i][-1]["TOTK"] for i in range(self.env.unwrapped.num_farms)])
+            tot_p = np.max([output[i][-1]["TOTP"] for i in range(self.env.unwrapped.num_farms)])
+
+        else:
+            # Single-Env
+            yield_reward = output[-1]["WSO"] if output[-1]["WSO"] is not None else 0
+
+            tot_n = output[-1]["TOTN"]
+            tot_w = output[-1]["TOTIRRIG"]
+            tot_k = output[-1]["TOTK"]
+            tot_p = output[-1]["TOTP"]
+
+        # 2. Check for Violations
+        is_violating = (tot_n > self.max_n) or (tot_w > self.max_w) or (tot_k > self.max_k) or (tot_p > self.max_p)
+
+        if is_violating:
+            if (any(act_tuple) != 0):
+                return 0
+            else:
+                return yield_reward
+        
+        constraint_bonus = 500
+        
+        if (yield_reward > 0) and (tot_p <= self.max_p) and (act_tuple[self.env.unwrapped.P] == 0):
+            constraint_bonus += 100
+        
+        if (yield_reward > 0) and (tot_n <= self.max_n) and (act_tuple[self.env.unwrapped.N] == 0):
+            constraint_bonus += 100
+
+        if (yield_reward > 0) and (tot_k <= self.max_k) and (act_tuple[self.env.unwrapped.K] == 0):
+            constraint_bonus += 100
+
+        if (yield_reward > 0) and (tot_w <= self.max_w) and (act_tuple[self.env.unwrapped.I] == 0):
+            constraint_bonus += 100
+        
+        return yield_reward + constraint_bonus

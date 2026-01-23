@@ -146,7 +146,17 @@ def train(kwargs: Namespace) -> None:
         obs = next_obs
 
         if global_step % args.checkpoint_frequency == 0:
-            writer.add_scalar("charts/average_reward", eval_policy(q_network, envs, kwargs, device), global_step)
+            writer.add_scalar("charts/average_reward", eval_policy(agent, envs, kwargs, device), global_step)
+            if "track/total_n" in infos:
+                writer.add_scalar("constraints/total_n", infos["track/total_n"], global_step)
+            if "track/total_w" in infos:
+                writer.add_scalar("constraints/total_w", infos["track/total_w"], global_step)
+            if "track/total_p" in infos:
+                writer.add_scalar("constraints/total_p", infos["track/total_p"], global_step)
+            if "track/total_k" in infos:
+                writer.add_scalar("constraints/total_k", infos["track/total_k"], global_step)
+            if "track/is_violating" in infos:
+                writer.add_scalar("constraints/violation_rate", infos["track/is_violating"], global_step)
 
         if global_step > args.learning_starts:
             if global_step % args.train_frequency == 0:

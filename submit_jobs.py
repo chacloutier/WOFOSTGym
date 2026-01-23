@@ -16,7 +16,7 @@ jobs = [
         "args": [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
-            "--env_reward", "RewardFertilizationThresholdWrapper",
+            "--env_reward", "ThresholdRespectingRewardWrapper",
             "--max-n", "80.0",
             "--max-p", "80.0",
             "--max-k", "80.0",
@@ -35,7 +35,7 @@ jobs = [
         "args": [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
-            "--env_reward", "RewardFertilizationThresholdWrapper",
+            "--env_reward", "ThresholdRespectingRewardWrapper",
             "--max-n", "80.0",
             "--max-p", "80.0",
             "--max-k", "80.0",
@@ -53,7 +53,7 @@ jobs = [
         "args": [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
-            "--env_reward", "RewardFertilizationThresholdWrapper",
+            "--env_reward", "ThresholdRespectingRewardWrapper",
             "--max-n", "80.0",
             "--max-p", "80.0",
             "--max-k", "80.0",
@@ -71,7 +71,7 @@ jobs = [
         "args": [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
-            "--env-reward", "RewardFertilizationThresholdWrapper",
+            "--env-reward", "ThresholdRespectingRewardWrapper",
             "--max-n", "80.0",
             "--max-p", "80.0",
             "--max-k", "80.0",
@@ -85,12 +85,11 @@ jobs = [
 ]
 
 # SLURM Template for Compute Canada
-# Adjust --account, --time, and --mem as needed
 slurm_template = """#!/bin/bash
 #SBATCH --account=def-mcrowley_gpu
 #SBATCH --time=0-11:00:00        
-#SBATCH --mem=16G             
-#SBATCH --cpus-per-task=2
+#SBATCH --mem=32G             
+#SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:nvidia_h100_80gb_hbm3_2g.20gb:1
 #SBATCH --job-name={job_name}
 #SBATCH --output={log_dir}/%x-%j.out
