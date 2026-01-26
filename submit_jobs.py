@@ -87,9 +87,9 @@ jobs = [
 # SLURM Template for Compute Canada
 slurm_template = """#!/bin/bash
 #SBATCH --account=def-mcrowley_gpu
-#SBATCH --time=0-11:00:00        
+#SBATCH --time=0-23:55:00        
 #SBATCH --mem=32G             
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=16
 #SBATCH --gres=gpu:nvidia_h100_80gb_hbm3_2g.20gb:1
 #SBATCH --job-name={job_name}
 #SBATCH --output={log_dir}/%x-%j.out
