@@ -16,7 +16,7 @@ jobs = [
         "args": [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
-            "--env_reward", "RewardFertilizationThresholdWrapper",
+            "--env_reward", "SimpleRewardMachineWrapper",
             "--max-n", "80.0",
             "--max-p", "80.0",
             "--max-k", "80.0",
@@ -35,7 +35,7 @@ jobs = [
         "args": [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
-            "--env_reward", "RewardFertilizationThresholdWrapper",
+            "--env_reward", "SimpleRewardMachineWrapper",
             "--max-n", "80.0",
             "--max-p", "80.0",
             "--max-k", "80.0",
@@ -53,7 +53,7 @@ jobs = [
         "args": [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
-            "--env_reward", "RewardFertilizationThresholdWrapper",
+            "--env_reward", "SimpleRewardMachineWrapper",
             "--max-n", "80.0",
             "--max-p", "80.0",
             "--max-k", "80.0",
@@ -71,7 +71,7 @@ jobs = [
         "args": [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
-            "--env-reward", "RewardFertilizationThresholdWrapper",
+            "--env-reward", "SimpleRewardMachineWrapper",
             "--max-n", "80.0",
             "--max-p", "80.0",
             "--max-k", "80.0",
