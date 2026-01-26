@@ -78,6 +78,7 @@ jobs = [
             "--max-w", "40.0",
             "--npk.ag.crop-name", "pear",
             "--npk.ag.crop-variety", "pear_1",
+            "--npk.intvn_interval", "14",
             "--track",
             "alg:BASELINE",
         ],

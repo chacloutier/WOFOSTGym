@@ -70,25 +70,32 @@ def train(kwargs: Namespace) -> None:
             
             action_dict = {"n": 0, "p": 0, "k": 0, "irrig": 0}
             
-            # --- INTERLEAVED LOGIC ---
-            # Identify all needs that are currently unsatisfied
-            needs = []
-            if total_n < N_LIMIT: needs.append('n')
-            if total_w < WATER_LIMIT: needs.append('irrig')
-            if total_k < K_LIMIT: needs.append('k')
-            if total_p < P_LIMIT: needs.append('p')
+            # 1. Calculate deficits (How much are we missing?)
+            n_deficit = max(0, (N_LIMIT - total_n)/N_LIMIT)
+            p_deficit = max(0, (P_LIMIT - total_p)/P_LIMIT)
+            k_deficit = max(0, (K_LIMIT - total_k)/K_LIMIT)
+            w_deficit = max(0, (WATER_LIMIT - total_w)/WATER_LIMIT)
             
-            # Randomly select one need to fulfill this step
-            # This spreads resources out rather than doing N then W then K...
-            if needs:
-                choice = random.choice(needs)
-                action_dict[choice] = 1
+            # 2. Find the biggest problem
+            deficits = {
+                'n': n_deficit,
+                'p': p_deficit,
+                'k': k_deficit,
+                'irrig': w_deficit
+            }
+            
+            # Get the resource with the highest deficit
+            most_urgent_need = max(deficits, key=deficits.get)
+            
+            # 3. If the deficit is significant (> 0), act on it
+            if deficits[most_urgent_need] > 0:
+                action_dict[most_urgent_need] = 1
                 
                 # Update trackers
-                if choice == 'n': total_n += FERT_UNIT
-                elif choice == 'irrig': total_w += IRRIG_UNIT
-                elif choice == 'k': total_k += FERT_UNIT
-                elif choice == 'p': total_p += FERT_UNIT
+                if most_urgent_need == 'n': total_n += FERT_UNIT
+                elif most_urgent_need == 'irrig': total_w += IRRIG_UNIT
+                elif most_urgent_need == 'k': total_k += FERT_UNIT
+                elif most_urgent_need == 'p': total_p += FERT_UNIT
             
             action_int = utils.action_to_numpy(envs.envs[0], action_dict)
             next_obs, reward, terminations, truncations, infos = envs.step(action_int)
