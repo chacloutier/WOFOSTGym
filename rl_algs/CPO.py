@@ -49,6 +49,15 @@ class Args(RL_Args):
     vf_iters: int = 80
     """Number of iterations to train value functions"""
 
+    max_n: float = 80.0
+    """Maximum Nitrogen limit"""
+    max_p: float = 80.0
+    """Maximum Phosphorous limit"""
+    max_k: float = 80.0
+    """Maximum Potassium limit"""
+    max_w: float = 40.0
+    """Maximum Water limit"""
+
     # Computed at runtime
     batch_size: int = 0
     num_iterations: int = 0
@@ -85,7 +94,7 @@ def conjugate_gradients(Avp_func, b, nsteps, residual_tol=1e-10):
     """
     x = torch.zeros_like(b)
     r = b.clone()
-    p = r.clone()
+    p = b.clone()
     rdotr = torch.dot(r, r)
     for _ in range(nsteps):
         Avp = Avp_func(p)
@@ -100,28 +109,35 @@ def conjugate_gradients(Avp_func, b, nsteps, residual_tol=1e-10):
             break
     return x
 
-def extract_cost(infos: dict, cost_keys: list = ["nitrogen", "phosphorous"]) -> np.ndarray:
-    """
-    Extracts a scalar cost from the complex WOFOST info structure.
-    Sums up the values found in the specified keys (e.g. N + P).
-    """
+def extract_cost(infos: dict, args: Args) -> np.ndarray:
     if not infos:
         return np.array([0.0])
 
-    total_cost = 0.0
-    for metric in cost_keys:
-        if metric in infos:
-            data_dict = infos[metric]
-            for k, v in data_dict.items():
-                if isinstance(k, str) and k.startswith("_"):
-                    continue
-                total_cost += v
-                
-    # Handle scalar return if numpy array math didn't trigger
-    if isinstance(total_cost, float):
-        return np.array([total_cost])
-        
-    return total_cost
+    # Extract raw values
+    n_val = infos.get("nitrogen", {}).get("total", 0.0)
+    p_val = infos.get("phosphorous", {}).get("total", 0.0)
+    k_val = infos.get("potassium", {}).get("total", 0.0)
+    w_val = infos.get("water", {}).get("total", 0.0)
+
+    # Calculate ratios (Current / Limit)
+    # A value > 1.0 means violation
+    r_n = n_val / args.max_n
+    r_p = p_val / args.max_p
+    r_k = k_val / args.max_k
+    r_w = w_val / args.max_w
+
+    # AGGREGATION STRATEGY:
+    # Option A: Max Violation (Strictest). 
+    # If ANY single nutrient is over the limit, cost > 1.0.
+    # This is non-differentiable at the crossing point but works okay for RL.
+    # cost = max(r_n, r_p, r_k, r_w)
+
+    # Option B: Sum of Ratios (Smoother gradient).
+    # You would need to set args.cost_limit to 4.0 (if you allow all to be at limit)
+    # or keep it at 1.0 to force a trade-off.
+    cost = (r_n + r_p + r_k + r_w) / 4.0 
+
+    return np.array([cost])
 
 # ------------------------------------------------------------------------------
 # 3. The CPO Agent
@@ -173,6 +189,9 @@ class CPO(nn.Module, Agent):
         dist = Categorical(logits=logits)
         return dist.log_prob(action), dist.entropy(), dist
 
+    def get_logits(self, x):
+        return self.actor(x)
+
     def get_vals(self, x):
         return self.critic(x), self.cost_critic(x)
 
@@ -208,16 +227,27 @@ def train(kwargs: Namespace) -> None:
     next_obs = torch.Tensor(next_obs).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
 
-    # Helper: FVP (Fisher Vector Product) for CPO
-    def compute_fvp(vector, obs_b, act_b):
+    # --------------------------------------------------------------------------
+    # FVP Implementations
+    # --------------------------------------------------------------------------
+
+    def compute_fvp_direct(vector, obs_b, act_b):
+        """
+        Computes the product of the Fisher Information Matrix (Hessian of KL)
+        and a vector 'v' using the "Double Backprop" trick on the KL divergence.
+        Equation: \nabla(\nabla KL \cdot v)
+        """
+        # 1. Compute KL
         _, _, dist = agent.get_log_prob_entropy(obs_b, act_b)
         with torch.no_grad():
              _, _, dist_old = agent.get_log_prob_entropy(obs_b, act_b)
-        
         kl = torch.distributions.kl.kl_divergence(dist_old, dist).mean()
+        
+        # 2. Gradient of KL
         grads = torch.autograd.grad(kl, agent.actor.parameters(), create_graph=True)
         flat_grad_kl = flat_grad(grads, agent.actor.parameters(), detach=False)
 
+        # 3. Hessian-Vector Product (Gradient of the dot product)
         kl_v = (flat_grad_kl * vector).sum()
         grads_v = torch.autograd.grad(kl_v, agent.actor.parameters())
         flat_grad_grad_kl = flat_grad(grads_v, agent.actor.parameters(), detach=True)
@@ -249,7 +279,7 @@ def train(kwargs: Namespace) -> None:
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             
             # --- EXTRACT COST ---
-            c_step = extract_cost(infos, cost_keys=["nitrogen", "phosphorous", "potassium"])
+            c_step = extract_cost(infos, args)
             costs[step] = torch.tensor(c_step).float().to(device).view(-1)
 
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
@@ -301,9 +331,9 @@ def train(kwargs: Namespace) -> None:
         b_c_adv = c_adv.reshape(-1)
         b_old_log_probs = logprobs.reshape(-1)
 
-        # Normalize Advantages
-        b_adv = (b_adv - b_adv.mean()) / (b_adv.std() + 1e-8)
-        b_c_adv = (b_c_adv - b_c_adv.mean()) / (b_c_adv.std() + 1e-8)
+        # # Normalize Advantages
+        # b_adv = (b_adv - b_adv.mean()) / (b_adv.std() + 1e-8)
+        # b_c_adv = (b_c_adv - b_c_adv.mean()) / (b_c_adv.std() + 1e-8)
 
         # ----------------------------------------------------------------------
         # 3. CPO Update Step
@@ -322,36 +352,86 @@ def train(kwargs: Namespace) -> None:
         current_cost = cost_values.mean().item() 
         cost_delta = current_cost - args.cost_limit
         
-        # Compute Search Direction
-        step_dir_g = conjugate_gradients(lambda v: compute_fvp(v, b_obs, b_act), grad_g, args.cg_iters)
-        step_dir_b = conjugate_gradients(lambda v: compute_fvp(v, b_obs, b_act), grad_b, args.cg_iters)
+        # Compute Search Direction (Conjugate Gradient)
+        step_dir_g = conjugate_gradients(lambda v: compute_fvp_direct(v, b_obs, b_act), grad_g, args.cg_iters)
+        step_dir_b = conjugate_gradients(lambda v: compute_fvp_direct(v, b_obs, b_act), grad_b, args.cg_iters)
 
-        qqq = (step_dir_g * compute_fvp(step_dir_g, b_obs, b_act)).sum()
-        s = (step_dir_b * compute_fvp(step_dir_b, b_obs, b_act)).sum()
-        r = (step_dir_g * compute_fvp(step_dir_b, b_obs, b_act)).sum()
+        # Analytical Variables
+        # q = g^T H^-1 g
+        # s = b^T H^-1 b
+        # r = g^T H^-1 b
+        q = torch.dot(grad_g, step_dir_g)
+        s = torch.dot(grad_b, step_dir_b)
+        r = torch.dot(grad_g, step_dir_b)
+    
+        # --- DUAL OPTIMIZATION---
         
-        optim_case = 0 # 0: Recovery, 1: Normal, 2: Feasible but strict
-        if cost_delta > 0:
-            # VIOLATION: Recovery
-            lam = torch.sqrt(args.target_kl / (s + 1e-8))
-            nu = 0
-            final_step_dir = -lam * step_dir_b
+        # Helper functions for the dual objective
+        def f_a_lambda(lam):
+            return ((r**2) / s - q) / (2 * lam) + lam * ((cost_delta**2) / s - args.target_kl) / 2 - (r * cost_delta) / s
+
+        def f_b_lambda(lam):
+            return - (q / lam + lam * args.target_kl) / 2
+
+        # 1. Check Feasibility
+        # If the trust region is too small to correct the cost constraint (c^2/s > delta), 
+        # and we are violating the constraint (cost_delta > 0), we are INFEASIBLE.
+        is_feasible = True
+        if cost_delta > 0 and (cost_delta**2) / (s + 1e-8) > args.target_kl:
+            is_feasible = False
+        
+        optim_case = 0
+        final_step_dir = torch.zeros_like(step_dir_g)
+
+        if not is_feasible:
+            # Step direction: - sqrt(2 * delta / s) * H^-1 b
+            lam_rec = torch.sqrt(2 * args.target_kl / (s + 1e-8))
+            final_step_dir = -lam_rec * step_dir_b
             optim_case = 0
         else:
-            # SAFE: Maximize Reward
-            A = qqq - r**2 / (s + 1e-8)
-            B = 2*args.target_kl - cost_delta**2 / (s + 1e-8)
+            # --- FEASIBLE: SOLVE DUAL ---
+            # We solve for optimal lambda (KL constraint) and nu (Cost constraint)
             
-            if cost_delta < 0 and B < 0:
-                lam = torch.sqrt(args.target_kl / (qqq + 1e-8))
-                nu = 0
-                final_step_dir = lam * step_dir_g
-                optim_case = 2
+            # Coefficients for the quadratic equation of lambda (Active constraint case)
+            # A corresponds to the sqrt term in the analytical solution
+            radicand_A = (q - (r**2) / (s + 1e-8)) / (args.target_kl - (cost_delta**2) / (s + 1e-8))
+            
+            # Clamp to avoid NaNs if numerical noise makes it slightly negative
+            radicand_A = torch.max(radicand_A, torch.tensor(0.0).to(device))
+            A = torch.sqrt(radicand_A)
+            
+            # B corresponds to TRPO solution (Inactive constraint)
+            B = torch.sqrt(q / args.target_kl)
+            
+            # Candidate lambdas
+            if cost_delta > 0:
+                # If we are violating, lambda must be large enough to reduce cost
+                lam_a = torch.max(r / cost_delta, A)
+                lam_b = torch.max(torch.tensor(0.0).to(device), torch.min(B, r / cost_delta))
             else:
-                lam = torch.sqrt(args.target_kl / (qqq + 1e-8)) 
-                nu = max(0, r/s * lam - cost_delta/s) 
-                final_step_dir = (1/ (lam + 1e-8)) * (step_dir_g - nu * step_dir_b)
-                optim_case = 1
+                # If we are safe, lambda handles the trust region
+                lam_b = torch.max(r / (cost_delta - 1e-8), B)
+                lam_a = torch.max(torch.tensor(0.0).to(device), torch.min(A, r / (cost_delta - 1e-8)))
+
+            # Compare Dual Objectives
+            val_a = f_a_lambda(lam_a)
+            val_b = f_b_lambda(lam_b)
+
+            if val_a >= val_b:
+                opt_lam = lam_a
+                optim_case = 1 # Active Constraint
+            else:
+                opt_lam = lam_b
+                optim_case = 2 # Inactive Constraint (TRPO)
+
+            # Solve for Nu (Cost Lagrange Multiplier)
+            # nu = (lambda * c - r) / s
+            nu = (opt_lam * cost_delta - r) / (s + 1e-8)
+            opt_nu = torch.max(nu, torch.tensor(0.0).to(device))
+            
+            # Calculate Final Direction
+            # d = (1/lambda) * (H^-1 g - nu * H^-1 b)
+            final_step_dir = (1.0 / (opt_lam + 1e-8)) * (step_dir_g - opt_nu * step_dir_b)
 
         # 4. Line Search
         old_params = flat_params(agent.actor)
@@ -370,16 +450,21 @@ def train(kwargs: Namespace) -> None:
             set_params(agent.actor, new_params)
             loss, kl, cost_surr = get_loss_and_kl()
             
+            # Check KL Constraint
             if kl > args.target_kl * 1.5:
                 continue
             
-            if optim_case > 0:
-                 if loss > surr_loss and cost_surr <= max(0, cost_delta): 
-                     break
-            else:
+            # Check Improvement & Safety
+            if optim_case == 0:
+                # Recovery: We only care that cost decreases
                 if cost_surr < cost_loss:
-                     break
+                    break
+            else:
+                cost_change = cost_surr - cost_loss
+                if loss > surr_loss and (cost_change + cost_delta <= 1e-8):
+                    break
         else:
+            # Line search failed: Revert to old params
             set_params(agent.actor, old_params)
 
         # 5. Value Function Updates
@@ -389,6 +474,7 @@ def train(kwargs: Namespace) -> None:
             v_loss = ((v_pred - b_returns) ** 2).mean()
             optimizer_critic.zero_grad()
             v_loss.backward()
+            torch.nn.utils.clip_grad_norm_(agent.critic.parameters(), max_norm=0.5)
             optimizer_critic.step()
             
         b_c_returns = c_returns.reshape(-1)
@@ -404,6 +490,7 @@ def train(kwargs: Namespace) -> None:
         writer.add_scalar("losses/cost_value_loss", c_loss.item(), global_step)
         writer.add_scalar("charts/cost_delta", cost_delta, global_step)
         writer.add_scalar("charts/avg_cost", current_cost, global_step)
+        writer.add_scalar("charts/optim_case", optim_case, global_step)
 
     envs.close()
     writer.close()

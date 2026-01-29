@@ -22,7 +22,6 @@ from typing import Union, Annotated, Optional
 from argparse import Namespace
 from rl_algs.PPO import Args as PPOArgs
 from rl_algs.CPO import Args as CPOArgs
-from rl_algs.CPO_achiam import Args as CPOAchiamArgs
 from rl_algs.DQN import Args as DQNArgs
 from rl_algs.SAC import Args as SACArgs
 from rl_algs.BASELINE import Args as BASELINEArgs
@@ -33,7 +32,6 @@ class AgentArgs(utils.Args):
     alg: Union[
         Annotated[PPOArgs, tyro.conf.subcommand(name="PPO")],
         Annotated[CPOArgs, tyro.conf.subcommand(name="CPO")],
-        Annotated[CPOAchiamArgs, tyro.conf.subcommand(name="CPO_achiam")],
         Annotated[DQNArgs, tyro.conf.subcommand(name="DQN")],
         Annotated[SACArgs, tyro.conf.subcommand(name="SAC")],
         Annotated[BASELINEArgs, tyro.conf.subcommand(name="BASELINE")],
@@ -56,8 +54,6 @@ if __name__ == "__main__":
         agent_key = "PPO"
     elif isinstance(tyro_args.alg, CPOArgs):
         agent_key = "CPO"
-    elif isinstance(tyro_args.alg, CPOAchiamArgs):
-        agent_key = "CPO_achiam"
     elif isinstance(tyro_args.alg, DQNArgs):
         agent_key = "DQN"
     elif isinstance(tyro_args.alg, SACArgs):
