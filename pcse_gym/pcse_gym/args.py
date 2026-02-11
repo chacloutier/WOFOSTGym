@@ -473,6 +473,17 @@ class NPK_Args:
     """Parameters for Agromanangement file"""
     ag: Agro_Args
 
+    # --- ADDED: Constraints for Safe RL ---
+    max_n: float = float('inf')
+    """Maximum Nitrogen allowed"""
+    max_p: float = float('inf')
+    """Maximum Phosphorous allowed"""
+    max_k: float = float('inf')
+    """Maximum Potassium allowed"""
+    max_w: float = float('inf')
+    """Maximum Irrigation/Water allowed"""
+    # --------------------------------------
+
     """Environment seed"""
     seed: int = 0
     """Randomization scale for domain randomization"""

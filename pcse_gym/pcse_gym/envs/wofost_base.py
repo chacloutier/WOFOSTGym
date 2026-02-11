@@ -316,6 +316,28 @@ class NPK_Env(gym.Env):
 
         reward = self._get_reward(output, act_tuple)
 
+        # --- LOGGING UPDATES ---
+        # Extract totals for tracking
+        tot_n = output[-1]["TOTN"]
+        tot_p = output[-1]["TOTP"]
+        tot_k = output[-1]["TOTK"]
+        tot_w = output[-1]["TOTIRRIG"]
+
+        self.log["track/total_n"] = tot_n
+        self.log["track/total_p"] = tot_p
+        self.log["track/total_k"] = tot_k
+        self.log["track/total_w"] = tot_w
+
+        # Check for violations using args (default to inf if not present)
+        limit_n = getattr(self.args, "max_n", float('inf'))
+        limit_p = getattr(self.args, "max_p", float('inf'))
+        limit_k = getattr(self.args, "max_k", float('inf'))
+        limit_w = getattr(self.args, "max_w", float('inf'))
+
+        is_violating = (tot_n > limit_n) or (tot_w > limit_w) or (tot_p > limit_p) or (tot_k > limit_k)
+        self.log["track/is_violating"] = 1.0 if is_violating else 0.0
+        # -----------------------
+
         termination = output[-1]["FIN"] == 1.0 or output[-1]["FIN"] is None
         if output[-1]["FIN"] is None:
             observation = np.nan_to_num(observation)

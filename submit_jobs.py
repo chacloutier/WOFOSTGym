@@ -85,6 +85,83 @@ jobs = [
     },
 ]
 
+jobs = [
+    {
+        "name": "CPO_Pear",
+        "agent_type": "CPO",
+        "args": [
+            "--env-id", "perennial-lnpkw-v0",
+            "--agro-file", "pear_agro.yaml",
+            "--max-n", "80.0",
+            "--max-p", "80.0",
+            "--max-k", "80.0",
+            "--max-w", "40.0",
+            "--env-reward", "RewardScalingWrapper",
+            "--npk.ag.crop-name", "pear",
+            "--npk.ag.crop-variety", "pear_1",
+            "--npk.intvn_interval", "14",
+            "--track",
+            "alg:CPO",
+            "--alg.target-kl", "0.01"
+        ]
+    },
+    {
+        "name": "PPO_Lag_Pear",
+        "agent_type": "PPO_Lag",
+        "args": [
+            "--env-id", "perennial-lnpkw-v0",
+            "--agro-file", "pear_agro.yaml",
+            "--env_reward", "RewardScalingWrapper",
+            "--max_n", "80.0",
+            "--max_p", "80.0",
+            "--max_k", "80.0",
+            "--max_w", "40.0",
+            "--npk.max_n", "80.0",
+            "--npk.max_p", "80.0",
+            "--npk.max_k", "80.0",
+            "--npk.max_w", "40.0",
+            "--npk.ag.crop-name", "pear",
+            "--npk.ag.crop-variety", "pear_1",
+            "--npk.intvn_interval", "14",
+            "--track",
+            "alg:PPO_Lag",
+            "--alg.no-norm-adv",
+            "--alg.num-steps", "4096",
+            "--alg.ent-coef", "0.05",
+            "--alg.cost-limit", "0.1",
+            "--alg.lagrangian-learning-rate", "0.1",
+            "--alg.initial-lambda", "1.0"
+        ]
+    },
+    {
+        "name": "PPO_Lag_Rate_Pear",
+        "agent_type": "PPO_Lag_rate",
+        "args": [
+            "--env-id", "perennial-lnpkw-v0",
+            "--agro-file", "pear_agro.yaml",
+            "--env_reward", "RewardScalingWrapper",
+            "--max_n", "80.0",
+            "--max_p", "80.0",
+            "--max_k", "80.0",
+            "--max_w", "40.0",
+            "--npk.max_n", "80.0",
+            "--npk.max_p", "80.0",
+            "--npk.max_k", "80.0",
+            "--npk.max_w", "40.0",
+            "--npk.ag.crop-name", "pear",
+            "--npk.ag.crop-variety", "pear_1",
+            "--npk.intvn_interval", "14",
+            "--track",
+            "alg:PPO_Lag_rate",
+            "--alg.no-norm-adv",
+            "--alg.num-steps", "4096",
+            "--alg.ent-coef", "0.05",
+            "--alg.lagrangian-learning-rate", "0.1",
+            "--alg.initial-lambda", "1.0"
+        ]
+    },
+]
+
 # SLURM Template for Compute Canada
 slurm_template = """#!/bin/bash
 #SBATCH --account=def-mcrowley_gpu

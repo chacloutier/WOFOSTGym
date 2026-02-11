@@ -34,8 +34,11 @@ class Args(RL_Args):
     # CPO Specific Hyperparameters
     target_kl: float = 0.01
     """Maximum allowed KL divergence per step"""
-    cost_limit: float = 25.0 
-    """The maximum allowed cost (safety constraint)"""
+    
+    # --- UPDATED: Unified Cost Limit ---
+    cost_limit: float = 1.0 
+    """The maximum allowed cost ratio (1.0 = 100% of budget)"""
+    
     damping: float = 0.1
     """Damping for the Fisher Information Matrix (FIM)"""
     cg_iters: int = 10
@@ -48,7 +51,6 @@ class Args(RL_Args):
     """Learning rate for Value Function and Cost Value Function"""
     vf_iters: int = 80
     """Number of iterations to train value functions"""
-
     max_n: float = 80.0
     """Maximum Nitrogen limit"""
     max_p: float = 80.0
@@ -57,6 +59,10 @@ class Args(RL_Args):
     """Maximum Potassium limit"""
     max_w: float = 40.0
     """Maximum Water limit"""
+    
+    # --- NEW: Evaluation & Logging ---
+    checkpoint_frequency: int = 500
+    """How often to save the agent and run eval_policy"""
 
     # Computed at runtime
     batch_size: int = 0
@@ -110,34 +116,45 @@ def conjugate_gradients(Avp_func, b, nsteps, residual_tol=1e-10):
     return x
 
 def extract_cost(infos: dict, args: Args) -> np.ndarray:
+    """
+    Extracts a scalar cost by normalizing multiple constraints against their limits.
+    Returns the maximum violation ratio (1.0 = exactly at limit).
+    """
     if not infos:
         return np.array([0.0])
 
-    # Extract raw values
-    n_val = infos.get("nitrogen", {}).get("total", 0.0)
-    p_val = infos.get("phosphorous", {}).get("total", 0.0)
-    k_val = infos.get("potassium", {}).get("total", 0.0)
-    w_val = infos.get("water", {}).get("total", 0.0)
+    # The 'infos' dict contains numpy arrays for the totals, e.g., 'track/total_p': array([8.])
+    # We use .item() to extract the scalar float from the 1-element array.
+    
+    # Get Nitrogen Total
+    n_arr = infos.get("track/total_n", np.array([0.0]))
+    n_val = n_arr.item() if isinstance(n_arr, np.ndarray) else n_arr
+
+    # Get Phosphorous Total
+    p_arr = infos.get("track/total_p", np.array([0.0]))
+    p_val = p_arr.item() if isinstance(p_arr, np.ndarray) else p_arr
+
+    # Get Potassium Total
+    k_arr = infos.get("track/total_k", np.array([0.0]))
+    k_val = k_arr.item() if isinstance(k_arr, np.ndarray) else k_arr
+
+    # Get Water Total
+    w_arr = infos.get("track/total_w", np.array([0.0]))
+    w_val = w_arr.item() if isinstance(w_arr, np.ndarray) else w_arr
 
     # Calculate ratios (Current / Limit)
-    # A value > 1.0 means violation
+    # Example: If P is 8.0 and Limit is 80.0, ratio is 0.1
     r_n = n_val / args.max_n
     r_p = p_val / args.max_p
     r_k = k_val / args.max_k
     r_w = w_val / args.max_w
 
-    # AGGREGATION STRATEGY:
-    # Option A: Max Violation (Strictest). 
-    # If ANY single nutrient is over the limit, cost > 1.0.
-    # This is non-differentiable at the crossing point but works okay for RL.
-    # cost = max(r_n, r_p, r_k, r_w)
-
-    # Option B: Sum of Ratios (Smoother gradient).
-    # You would need to set args.cost_limit to 4.0 (if you allow all to be at limit)
-    # or keep it at 1.0 to force a trade-off.
-    cost = (r_n + r_p + r_k + r_w) / 4.0 
-
-    return np.array([cost])
+    max_ratio = max(r_n, r_p, r_k, r_w)
+    
+    if max_ratio <= 1.0:
+        return np.array([0.0])
+    else:
+        return np.array([1.0])
 
 # ------------------------------------------------------------------------------
 # 3. The CPO Agent
@@ -234,8 +251,6 @@ def train(kwargs: Namespace) -> None:
     def compute_fvp_direct(vector, obs_b, act_b):
         """
         Computes the product of the Fisher Information Matrix (Hessian of KL)
-        and a vector 'v' using the "Double Backprop" trick on the KL divergence.
-        Equation: \nabla(\nabla KL \cdot v)
         """
         # 1. Compute KL
         _, _, dist = agent.get_log_prob_entropy(obs_b, act_b)
@@ -284,11 +299,35 @@ def train(kwargs: Namespace) -> None:
 
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
 
+            # --- LOGGING: Episodic Returns ---
             if "final_info" in infos:
                 for info in infos["final_info"]:
                     if info and "episode" in info:
                         print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                         writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                        writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+
+            # --- LOGGING: Evaluation & Checkpointing (Matches PPO) ---
+            if global_step % args.checkpoint_frequency == 0:
+                # 1. Save Agent
+                torch.save(agent.state_dict(), f"{kwargs.save_folder}{run_name}/agent.pt")
+                if kwargs.track:
+                    wandb.save(f"{wandb.run.dir}/agent.pt", policy="now")
+                
+                # 2. Run Eval Policy and Log Average Reward
+                writer.add_scalar("charts/average_reward", eval_policy(agent, envs, kwargs, device), global_step)
+                
+                # 3. Log Detailed Constraints (If provided by wrapper)
+                if "track/total_n" in infos:
+                    writer.add_scalar("constraints/total_n", infos["track/total_n"], global_step)
+                if "track/total_w" in infos:
+                    writer.add_scalar("constraints/total_w", infos["track/total_w"], global_step)
+                if "track/total_p" in infos:
+                    writer.add_scalar("constraints/total_p", infos["track/total_p"], global_step)
+                if "track/total_k" in infos:
+                    writer.add_scalar("constraints/total_k", infos["track/total_k"], global_step)
+                if "track/is_violating" in infos:
+                    writer.add_scalar("constraints/violation_rate", infos["track/is_violating"], global_step)
 
         # 2. GAE Estimation (Reward & Cost)
         with torch.no_grad():
@@ -491,6 +530,7 @@ def train(kwargs: Namespace) -> None:
         writer.add_scalar("charts/cost_delta", cost_delta, global_step)
         writer.add_scalar("charts/avg_cost", current_cost, global_step)
         writer.add_scalar("charts/optim_case", optim_case, global_step)
+        writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
     envs.close()
     writer.close()

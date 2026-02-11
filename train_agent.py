@@ -24,6 +24,10 @@ from rl_algs.PPO import Args as PPOArgs
 from rl_algs.CPO import Args as CPOArgs
 from rl_algs.DQN import Args as DQNArgs
 from rl_algs.SAC import Args as SACArgs
+from rl_algs.TRPO import Args as TRPOArgs
+from rl_algs.PPO_Lag import Args as PPOLagArgs
+from rl_algs.PPO_Lag_rate import Args as PPOLagRateArgs
+from rl_algs.TRPO_Lag import Args as TRPOLagArgs
 from rl_algs.BASELINE import Args as BASELINEArgs
 
 @dataclass
@@ -34,6 +38,10 @@ class AgentArgs(utils.Args):
         Annotated[CPOArgs, tyro.conf.subcommand(name="CPO")],
         Annotated[DQNArgs, tyro.conf.subcommand(name="DQN")],
         Annotated[SACArgs, tyro.conf.subcommand(name="SAC")],
+        Annotated[TRPOArgs, tyro.conf.subcommand(name="TRPO")],
+        Annotated[PPOLagArgs, tyro.conf.subcommand(name="PPO_Lag")],
+        Annotated[PPOLagRateArgs, tyro.conf.subcommand(name="PPO_Lag_rate")],
+        Annotated[TRPOLagArgs, tyro.conf.subcommand(name="TRPO_Lag")],
         Annotated[BASELINEArgs, tyro.conf.subcommand(name="BASELINE")],
     ] = field(default_factory=lambda: PPOArgs())
 
@@ -58,6 +66,14 @@ if __name__ == "__main__":
         agent_key = "DQN"
     elif isinstance(tyro_args.alg, SACArgs):
         agent_key = "SAC"
+    elif isinstance(tyro_args.alg, TRPOArgs):
+        agent_key = "TRPO"
+    elif isinstance(tyro_args.alg, PPOLagArgs):
+        agent_key = "PPO_Lag"
+    elif isinstance(tyro_args.alg, PPOLagRateArgs):
+        agent_key = "PPO_Lag_rate"
+    elif isinstance(tyro_args.alg, TRPOLagArgs):
+        agent_key = "TRPO_Lag"
     elif isinstance(tyro_args.alg, BASELINEArgs):
         agent_key = "BASELINE"
     else:

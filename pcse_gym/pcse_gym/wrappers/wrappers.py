@@ -472,29 +472,38 @@ class RewardWrapper(gym.Wrapper, ABC):
         else:
             self.env.unwrapped._log(output[-1]["WSO"], act_tuple, reward)
 
-        if hasattr(self, "max_n") and hasattr(self, "max_w"):
-            info = self.env.unwrapped.log if self.env.unwrapped.log else {}
+        # --- LOGGING FIX ---
+        # We always want to log tracking info, regardless of which specific RewardWrapper is used.
+        info = self.env.unwrapped.log if self.env.unwrapped.log else {}
 
-            if isinstance(self.env.unwrapped, Multi_NPK_Env):
-                # For safety, we track the WORST case across farms
-                tot_n = np.max([output[i][-1]["TOTN"] for i in range(self.env.unwrapped.num_farms)])
-                tot_p = np.max([output[i][-1]["TOTP"] for i in range(self.env.unwrapped.num_farms)])
-                tot_k = np.max([output[i][-1]["TOTK"] for i in range(self.env.unwrapped.num_farms)])
-                tot_w = np.max([output[i][-1]["TOTIRRIG"] for i in range(self.env.unwrapped.num_farms)])
-            else:
-                tot_n = output[-1]["TOTN"]
-                tot_p = output[-1]["TOTP"]
-                tot_k = output[-1]["TOTK"]
-                tot_w = output[-1]["TOTIRRIG"]
+        if isinstance(self.env.unwrapped, Multi_NPK_Env):
+            # For safety, we track the WORST case across farms
+            tot_n = np.max([output[i][-1]["TOTN"] for i in range(self.env.unwrapped.num_farms)])
+            tot_p = np.max([output[i][-1]["TOTP"] for i in range(self.env.unwrapped.num_farms)])
+            tot_k = np.max([output[i][-1]["TOTK"] for i in range(self.env.unwrapped.num_farms)])
+            tot_w = np.max([output[i][-1]["TOTIRRIG"] for i in range(self.env.unwrapped.num_farms)])
+        else:
+            tot_n = output[-1]["TOTN"]
+            tot_p = output[-1]["TOTP"]
+            tot_k = output[-1]["TOTK"]
+            tot_w = output[-1]["TOTIRRIG"]
 
-            info["track/total_n"] = tot_n
-            info["track/total_w"] = tot_w
-            info["track/total_p"] = tot_p
-            info["track/total_k"] = tot_k
-            is_violating = (tot_n > self.max_n) or (tot_w > self.max_w) or (tot_p > self.max_p) or (tot_k > self.max_k)
-            info["track/is_violating"] = 1.0 if is_violating else 0.0
+        info["track/total_n"] = tot_n
+        info["track/total_w"] = tot_w
+        info["track/total_p"] = tot_p
+        info["track/total_k"] = tot_k
 
-            self.env.unwrapped.log = info
+        # Safely get limits. If the wrapper doesn't specify them, we assume infinite limits (no violation possible).
+        limit_n = getattr(self, "max_n", float('inf'))
+        limit_p = getattr(self, "max_p", float('inf'))
+        limit_k = getattr(self, "max_k", float('inf'))
+        limit_w = getattr(self, "max_w", float('inf'))
+
+        is_violating = (tot_n > limit_n) or (tot_w > limit_w) or (tot_p > limit_p) or (tot_k > limit_k)
+        info["track/is_violating"] = 1.0 if is_violating else 0.0
+
+        self.env.unwrapped.log = info
+        # -------------------
 
         return observation, reward, termination, truncation, self.env.unwrapped.log
 
@@ -503,7 +512,6 @@ class RewardWrapper(gym.Wrapper, ABC):
         Forward keyword environments to base env
         """
         return self.env.reset(**kwargs)
-
 
 class RewardFertilizationCostWrapper(RewardWrapper):
     """Modifies the reward to be a function of how much fertilization and irrigation
@@ -960,3 +968,52 @@ class ThresholdRespectingRewardWrapper(RewardWrapper):
             constraint_bonus += 100
         
         return yield_reward + constraint_bonus
+
+class RewardScalingWrapper(RewardWrapper):
+    """
+    Scales the environment reward (WSO) by a constant factor.
+    
+    Useful for addressing loss scale discrepancies when the raw reward (e.g., 15,000 kg/ha)
+    is significantly larger than the cost penalties (e.g., 1.0).
+    
+    Defaults to 0.001 (1e-3) to convert kg/ha to tons/ha.
+    """
+
+    def __init__(self, env: gym.Env, args: Namespace) -> None:
+        """Initialize the RewardScalingWrapper.
+
+        Args:
+            env: The environment to apply the wrapper
+            args: Namespace arguments. Looks for `reward_scale` (float). 
+                  Defaults to 1e-3 if not found.
+        """
+        super().__init__(env)
+        self.env = env
+
+        # Scaling factor: Default to 1/1000 (kg -> tons)
+        self.scale_factor = getattr(args, 'reward_scale', 1e-3)
+
+        # Load constraints from args for tracking purposes (used by Base Class step function)
+        # This ensures 'track/is_violating' is still calculated correctly in the logs
+        self.max_n = getattr(args, 'max_n', float('inf'))
+        self.max_w = getattr(args, 'max_w', float('inf'))
+        self.max_k = getattr(args, 'max_k', float('inf'))
+        self.max_p = getattr(args, 'max_p', float('inf'))
+
+    def _get_reward(self, output: dict, act_tuple: tuple[float, float, float, float]) -> float:
+        """
+        Returns the scaled WSO (Weight of Storage Organs).
+        """
+        
+        # 1. Calculate Raw Reward (Yield)
+        if isinstance(self.env.unwrapped, Multi_NPK_Env):
+            # Multi-Env: Sum Yield of all farms
+            raw_reward = 0
+            for i in range(self.env.unwrapped.num_farms):
+                raw_reward += output[i][-1]["WSO"] if output[i][-1]["WSO"] is not None else 0
+        else:
+            # Single-Env
+            raw_reward = output[-1]["WSO"] if output[-1]["WSO"] is not None else 0
+
+        # 2. Return Scaled Reward
+        return raw_reward * self.scale_factor

@@ -93,6 +93,12 @@ def setup(kwargs: Namespace, args: Namespace, run_name: str) -> tuple[SummaryWri
 
         alg_name = kwargs.agent_type
         env_type = kwargs.env_id
+        
+        # safely get env_reward, defaulting to None if missing
+        env_reward = getattr(kwargs, "env_reward", None) 
+
+        # Filter out None or empty strings
+        valid_tags = [str(tag) for tag in [alg_name, env_type, env_reward] if tag]
 
         wandb.init(
             project=args.wandb_project_name,
@@ -102,7 +108,7 @@ def setup(kwargs: Namespace, args: Namespace, run_name: str) -> tuple[SummaryWri
             name=run_name,
             monitor_gym=True,
             save_code=True,
-            tags=[alg_name, env_type, kwargs.env_reward],
+            tags=valid_tags,
             mode = "offline" if args.offline else "online",
         )
     writer = SummaryWriter(f"{kwargs.save_folder}{run_name}")
