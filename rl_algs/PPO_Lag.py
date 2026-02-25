@@ -123,10 +123,14 @@ def extract_step_cost(infos: dict, args: Args, num_envs: int) -> np.ndarray:
             k = info.get("track/total_k", 0.0)
             w = info.get("track/total_w", 0.0)
             
-            if (n > args.max_n or p > args.max_p or k > args.max_k or w > args.max_w):
-                costs[i] = 1.0
-            else:
-                costs[i] = 0.0
+            if n > args.max_n:
+                costs[i] += (n - args.max_n) / args.max_n
+            if k > args.max_k:
+                costs[i] += (k - args.max_k) / args.max_k
+            if p > args.max_p:
+                costs[i] += (p - args.max_p) / args.max_p
+            if w > args.max_w:
+                costs[i] += (w - args.max_w) / args.max_w
                 
     return costs
 
