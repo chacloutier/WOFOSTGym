@@ -70,6 +70,8 @@ class Args:
     max_w: Optional[float] = None
     """Cost of fertilization """
     cost: Optional[float] = None
+    """Whether to track the proportion of resources used in the observations."""
+    track_resources: Optional[bool] = None
 
     """Path configuration, generally do not change these """
     """Base filepath"""

@@ -796,6 +796,74 @@ class NormalizeReward(gym.Wrapper):
 
         return rews
 
+class BudgetObservationWrapper(gym.Wrapper):
+    """
+    Appends normalized cumulative usage [N, P, K, W] to the observation.
+    Designed to be applied to a SINGLE environment (before vectorization).
+    """
+
+    def __init__(self, env: gym.Env, args: Namespace) -> None:
+        """Initialize the wrapper.
+        
+        Args:
+            env: The environment to apply the wrapper
+            args: Namespace containing max_n, max_p, etc.
+        """
+        super().__init__(env)
+        self.env = env
+        self.args = args
+
+        # Load limits
+        self.limits = np.array([
+            getattr(args, 'max_n', 80.0),
+            getattr(args, 'max_p', 80.0),
+            getattr(args, 'max_k', 80.0),
+            getattr(args, 'max_w', 40.0)
+        ], dtype=np.float32)
+
+        # Update Observation Space
+        # We assume the base obs is a Box (standard for these envs)
+        old_shape = env.observation_space.shape
+        new_shape = (old_shape[0] + 4,) # Append 4 usage stats
+        
+        self.observation_space = Box(
+            low=-np.inf, 
+            high=np.inf, 
+            shape=new_shape, 
+            dtype=np.float32
+        )
+
+    def _append_usage(self, obs: np.ndarray, info: dict) -> np.ndarray:
+        """Helper to extract usage from info and append to obs"""
+        # Extract usage from the info dict (populated by RewardWrapper or Base Env)
+        # Default to 0.0 if not found (e.g., first reset)
+        usage = np.array([
+            info.get("track/total_n", 0.0),
+            info.get("track/total_p", 0.0),
+            info.get("track/total_k", 0.0),
+            info.get("track/total_w", 0.0),
+        ], dtype=np.float32)
+
+        # Normalize (Avoid division by zero)
+        usage_norm = usage / (self.limits + 1e-8)
+        
+        return np.concatenate([obs, usage_norm])
+
+    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict]:
+        """Step environment and append usage to obs"""
+        obs, reward, term, trunc, info = self.env.step(action)
+        
+        new_obs = self._append_usage(obs, info)
+        
+        return new_obs, reward, term, trunc, info
+
+    def reset(self, **kwargs: dict) -> tuple[np.ndarray, dict]:
+        """Reset environment and append usage (usually 0) to obs"""
+        obs, info = self.env.reset(**kwargs)
+        
+        new_obs = self._append_usage(obs, info)
+        
+        return new_obs, info
 
 class SimpleRewardMachineWrapper(RewardWrapper):
     """

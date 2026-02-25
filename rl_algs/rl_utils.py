@@ -56,7 +56,21 @@ class Agent(ABC):
         raise NotImplementedError
 
 
-def make_env(kwargs: Namespace, idx: int = 1, capture_video: bool = False, run_name: str = None) -> FunctionType:
+def recursive_unnormalize(env, reward):
+    """
+    Recursively search for the 'unnormalize' method in the wrapper stack.
+    If found, return unnormalized reward. If not, return raw reward.
+    """
+    if hasattr(env, "unnormalize"):
+        return env.unnormalize(reward)
+    elif hasattr(env, "env"):
+        return recursive_unnormalize(env.env, reward)
+    else:
+        # Reached base env without finding unnormalize
+        return reward
+
+
+def make_env(kwargs: Namespace, idx: int = 1, capture_video: bool = False, run_name: str = None, track_resources: bool = False) -> FunctionType:
     """
     Environment constructor for SyncVectorEnv
     """
@@ -67,9 +81,19 @@ def make_env(kwargs: Namespace, idx: int = 1, capture_video: bool = False, run_n
             env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
         else:
             env = utils.make_gym_env(kwargs, run_name=run_name)
+        
         env = utils.wrap_env_reward(env, kwargs)
+        
+        # 1. Normalize First
         env = wrappers.NormalizeObservation(env)
         env = wrappers.NormalizeReward(env)
+        
+        # 2. Budget Wrapper Last (prevents shape mismatch)
+        # Check both the explicit arg and the kwargs namespace
+        should_track = getattr(kwargs, "track_resources", False)
+        if should_track:
+            env = wrappers.BudgetObservationWrapper(env, kwargs)
+            
         return env
 
     return thunk
@@ -184,6 +208,9 @@ def eval_policy(
     env = wrappers.NormalizeObservation(env)
     env = wrappers.NormalizeReward(env)
 
+    if getattr(kwargs, "track_resources", False):
+        env = wrappers.BudgetObservationWrapper(env, kwargs)
+
     for i in range(eval_episodes):
 
         state, _, term, trunc = *env.reset(), False, False
@@ -193,10 +220,7 @@ def eval_policy(
             action = policy.get_action(state)
             state, reward, term, trunc, _ = env.step(action.detach().cpu().numpy().item())
 
-            if isinstance(eval_env, gym.vector.SyncVectorEnv):
-                avg_reward += eval_env.envs[0].unnormalize(reward)
-            else:
-                avg_reward += eval_env.unnormalize(reward)
+            avg_reward += recursive_unnormalize(eval_env.envs[0] if isinstance(eval_env, gym.vector.SyncVectorEnv) else eval_env, reward)
 
     avg_reward /= eval_episodes
     return avg_reward
@@ -206,9 +230,7 @@ def eval_policy_lstm(
     policy: Agent, eval_env: gym.Env, kwargs: Namespace, device: torch.device, eval_episodes: int = 5
 ) -> float:
     """
-    Evaluate a policy with an LSTM agent for Recurrent-PPO. Don't perform domain randomization
-    (ie evaluate performance on the base environment)
-    And don't perform limited weather resets (ie evaluate performance on the full weather data)
+    Evaluate a policy with an LSTM agent for Recurrent-PPO.
     """
     avg_reward = 0.0
 
@@ -257,8 +279,12 @@ def eval_policy_lstm(
     )
 
     env = utils.wrap_env_reward(env, kwargs)
+    
     env = wrappers.NormalizeObservation(env)
     env = wrappers.NormalizeReward(env)
+
+    if getattr(kwargs, "track_resources", False):
+        env = wrappers.BudgetObservationWrapper(env, kwargs)
 
     for i in range(eval_episodes):
 
@@ -267,7 +293,7 @@ def eval_policy_lstm(
         next_lstm_state = (
             torch.zeros(policy.lstm.num_layers, 1, policy.lstm.hidden_size).to(device),
             torch.zeros(policy.lstm.num_layers, 1, policy.lstm.hidden_size).to(device),
-        )  # hidden and cell states (see https://youtu.be/8HyCNIVRbSU)
+        )
 
         while not np.logical_or(term, trunc):
             next_done = np.logical_or([term], [term])
@@ -276,10 +302,8 @@ def eval_policy_lstm(
                 state = torch.Tensor(state).reshape((-1, *env.observation_space.shape)).to(device)
             action, next_lstm_state = policy.get_action(state, next_lstm_state, next_done)
             state, reward, term, trunc, _ = env.step(action.detach().cpu().numpy())
-            if isinstance(eval_env, gym.vector.SyncVectorEnv):
-                avg_reward += eval_env.envs[0].unnormalize(reward)
-            else:
-                avg_reward += eval_env.unnormalize(reward)
+            
+            avg_reward += recursive_unnormalize(eval_env.envs[0] if isinstance(eval_env, gym.vector.SyncVectorEnv) else eval_env, reward)
 
     avg_reward /= eval_episodes
     return avg_reward
