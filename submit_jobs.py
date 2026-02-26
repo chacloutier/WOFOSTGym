@@ -276,6 +276,7 @@ jobs = [
             "--alg.num-steps", "4096",
             "--alg.lagrangian-learning-rate", "0.1",
             "--alg.initial-lambda", "0.05"
+            "--alg.ent-coef", "0.001",
         ]
     },
     {
@@ -303,7 +304,8 @@ jobs = [
             "--alg.num-steps", "4096",
             "--alg.cost-limit", "0.1",
             "--alg.lagrangian-learning-rate", "0.1",
-            "--alg.initial-lambda", "0.05"
+            "--alg.initial-lambda", "0.05",
+            "--alg.ent-coef", "0.001",
         ]
     },
 ]
