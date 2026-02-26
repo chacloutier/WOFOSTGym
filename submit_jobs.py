@@ -275,7 +275,7 @@ jobs = [
             "--alg.no-norm-adv",
             "--alg.num-steps", "4096",
             "--alg.lagrangian-learning-rate", "0.1",
-            "--alg.initial-lambda", "0.05"
+            "--alg.initial-lambda", "0.05",
             "--alg.ent-coef", "0.001",
         ]
     },
@@ -303,6 +303,37 @@ jobs = [
             "--alg.no-norm-adv",
             "--alg.num-steps", "4096",
             "--alg.cost-limit", "0.1",
+            "--alg.lagrangian-learning-rate", "0.1",
+            "--alg.initial-lambda", "0.05",
+            "--alg.ent-coef", "0.001",
+        ]
+    },
+]
+
+jobs = [
+    {
+        "name": "PPO_Lag_Rate_Pear",
+        "agent_type": "PPO_Lag_rate",
+        "args": [
+            "--env-id", "perennial-lnpkw-v0",
+            "--agro-file", "pear_agro.yaml",
+            "--env_reward", "RewardScalingWrapper",
+            "--max_n", "80.0",
+            "--max_p", "80.0",
+            "--max_k", "80.0",
+            "--max_w", "40.0",
+            "--npk.max_n", "80.0",
+            "--npk.max_p", "80.0",
+            "--npk.max_k", "80.0",
+            "--npk.max_w", "40.0",
+            "--npk.ag.crop-name", "pear",
+            "--npk.ag.crop-variety", "pear_1",
+            "--npk.intvn_interval", "14",
+            "--track",
+            "--track-resources", "True",
+            "alg:PPO_Lag_rate",
+            "--alg.no-norm-adv",
+            "--alg.num-steps", "4096",
             "--alg.lagrangian-learning-rate", "0.1",
             "--alg.initial-lambda", "0.05",
             "--alg.ent-coef", "0.001",
