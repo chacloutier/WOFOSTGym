@@ -1059,7 +1059,8 @@ class RewardScalingWrapper(RewardWrapper):
         self.env = env
 
         # Scaling factor: Default to 1/1000 (kg -> tons)
-        self.scale_factor = getattr(args, 'reward_scale', 1e-3)
+        # updated this to be 1/100
+        self.scale_factor = getattr(args, 'reward_scale', 1e-2)
 
         # Load constraints from args for tracking purposes (used by Base Class step function)
         # This ensures 'track/is_violating' is still calculated correctly in the logs

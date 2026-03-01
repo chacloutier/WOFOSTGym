@@ -379,7 +379,6 @@ def train(kwargs: Namespace) -> None:
                 # Normalize advantages
                 if args.norm_adv:
                     mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
-                    mb_cost_advantages = (mb_cost_advantages - mb_cost_advantages.mean()) / (mb_cost_advantages.std() + 1e-8)
                 
                 # Combine: Reward Adv - Lambda * Cost Adv
                 combined_advantages = mb_advantages - cur_lambda * mb_cost_advantages

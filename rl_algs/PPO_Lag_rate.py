@@ -185,9 +185,7 @@ class PPOLag(nn.Module, Agent):
         )
 
     def get_lagrange_multiplier(self):
-        # [ADDED] Minimum clamp to prevent lambda from completely dying
-        # ln(0.05) is approx -3.0. This means lambda never drops below 0.05.
-        clamped_log_lambda = torch.clamp(self.log_lagrange_multiplier, min=-3.0)
+        clamped_log_lambda = torch.clamp(self.log_lagrange_multiplier, min=-10.0)
         return torch.exp(clamped_log_lambda)
 
     # [RESTORED] This method is required by the Agent Abstract Base Class
