@@ -56,6 +56,18 @@ class Args(RL_Args):
     checkpoint_frequency: int = 500
     """How often to save the agent during training"""
 
+    # --- Constraint Thresholds ---
+    max_n: float = 80.0
+    """Maximum Nitrogen limit"""
+    max_p: float = 80.0
+    """Maximum Phosphorous limit"""
+    max_k: float = 80.0
+    """Maximum Potassium limit"""
+    max_w: float = 40.0
+    """Maximum Water limit"""
+    terminate_on_violation: bool = False
+    """Toggle whether the episode terminates immediately upon violating any constraint limit"""
+
     batch_size: int = 0
     """the batch size (computed in runtime)"""
     minibatch_size: int = 0
@@ -177,6 +189,33 @@ def train(kwargs: Namespace) -> None:
             logprobs[step] = logprob
 
             next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
+            
+            # --- EARLY TERMINATION ON VIOLATION ---
+            if args.terminate_on_violation:
+                violated = np.zeros(args.num_envs, dtype=bool)
+                if isinstance(infos, dict) and "track/total_n" in infos:
+                    violated = (
+                        (np.array(infos["track/total_n"]) > args.max_n) |
+                        (np.array(infos["track/total_p"]) > args.max_p) |
+                        (np.array(infos["track/total_k"]) > args.max_k) |
+                        (np.array(infos["track/total_w"]) > args.max_w)
+                    )
+                elif isinstance(infos, list):
+                    for i, info in enumerate(infos):
+                        if (info.get("track/total_n", 0.0) > args.max_n or
+                            info.get("track/total_p", 0.0) > args.max_p or
+                            info.get("track/total_k", 0.0) > args.max_k or
+                            info.get("track/total_w", 0.0) > args.max_w):
+                            violated[i] = True
+                
+                for i in range(args.num_envs):
+                    if violated[i] and not terminations[i] and not truncations[i]:
+                        terminations[i] = True
+                        if args.num_envs == 1:
+                            next_obs, _ = envs.reset(seed=args.seed)
+                        else:
+                            print("WARNING: Early termination triggered, but manual reset for num_envs > 1 requires a custom wrapper.")
+
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)

@@ -67,6 +67,8 @@ class Args(RL_Args):
     """Maximum Potassium limit"""
     max_w: float = 40.0
     """Maximum Water limit"""
+    terminate_on_violation: bool = False
+    """Toggle whether the episode terminates immediately upon violating any constraint limit"""
 
     batch_size: int = 0
     """the batch size (computed in runtime)"""
@@ -98,14 +100,6 @@ def extract_step_cost(infos: dict, args: Args, num_envs: int) -> np.ndarray:
             w = infos["track/total_w"][i]
             
             # Check constraints
-            # if (n > args.max_n or 
-            #     p > args.max_p or 
-            #     k > args.max_k or 
-            #     w > args.max_w):
-            #     costs[i] = 1.0
-            # else:
-            #     costs[i] = 0.0
-            
             if n > args.max_n:
                 costs[i] += (n - args.max_n) / args.max_n
             if k > args.max_k:
@@ -277,6 +271,33 @@ def train(kwargs: Namespace) -> None:
             logprobs[step] = logprob
 
             next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
+            
+            # --- EARLY TERMINATION ON VIOLATION ---
+            if args.terminate_on_violation:
+                violated = np.zeros(args.num_envs, dtype=bool)
+                if isinstance(infos, dict) and "track/total_n" in infos:
+                    violated = (
+                        (np.array(infos["track/total_n"]) > args.max_n) |
+                        (np.array(infos["track/total_p"]) > args.max_p) |
+                        (np.array(infos["track/total_k"]) > args.max_k) |
+                        (np.array(infos["track/total_w"]) > args.max_w)
+                    )
+                elif isinstance(infos, list):
+                    for i, info in enumerate(infos):
+                        if (info.get("track/total_n", 0.0) > args.max_n or
+                            info.get("track/total_p", 0.0) > args.max_p or
+                            info.get("track/total_k", 0.0) > args.max_k or
+                            info.get("track/total_w", 0.0) > args.max_w):
+                            violated[i] = True
+                
+                for i in range(args.num_envs):
+                    if violated[i] and not terminations[i] and not truncations[i]:
+                        terminations[i] = True
+                        if args.num_envs == 1:
+                            next_obs, _ = envs.reset(seed=args.seed)
+                        else:
+                            print("WARNING: Early termination triggered, but manual reset for num_envs > 1 requires a custom wrapper.")
+
             next_done = np.logical_or(terminations, truncations)
             
             # --- UPDATED: Specific Cost Calculation ---

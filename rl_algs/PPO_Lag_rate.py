@@ -54,6 +54,7 @@ class Args(RL_Args):
     max_p: float = 80.0
     max_k: float = 80.0
     max_w: float = 40.0
+    terminate_on_violation: bool = False
 
     batch_size: int = 0
     minibatch_size: int = 0
@@ -279,6 +280,34 @@ def train(kwargs: Namespace):
             logprobs[step] = logp
 
             next_obs, reward, term, trunc, infos = envs.step(action.cpu().numpy())
+            
+            # --- EARLY TERMINATION ON VIOLATION ---
+            if args.terminate_on_violation:
+                violated = np.zeros(args.num_envs, dtype=bool)
+                if isinstance(infos, dict) and "track/total_n" in infos:
+                    violated = (
+                        (np.array(infos["track/total_n"]) > args.max_n) |
+                        (np.array(infos["track/total_p"]) > args.max_p) |
+                        (np.array(infos["track/total_k"]) > args.max_k) |
+                        (np.array(infos["track/total_w"]) > args.max_w)
+                    )
+                elif isinstance(infos, list):
+                    for i, info in enumerate(infos):
+                        if (info.get("track/total_n", 0.0) > args.max_n or
+                            info.get("track/total_p", 0.0) > args.max_p or
+                            info.get("track/total_k", 0.0) > args.max_k or
+                            info.get("track/total_w", 0.0) > args.max_w):
+                            violated[i] = True
+                
+                for i in range(args.num_envs):
+                    if violated[i] and not term[i] and not trunc[i]:
+                        term[i] = True
+                        if args.num_envs == 1:
+                            next_obs, _ = envs.reset(seed=args.seed)
+                            usage_tracker.reset()
+                        else:
+                            print("WARNING: Early termination triggered, but manual reset for num_envs > 1 requires a custom wrapper.")
+
             next_done = np.logical_or(term, trunc)
 
             if global_step % args.checkpoint_frequency == 0:
@@ -293,7 +322,11 @@ def train(kwargs: Namespace):
 
             step_cost = usage_tracker.extract_step_usage(infos, next_done)
 
-            rewards[step] = torch.tensor(reward, device=device, dtype=torch.float32)
+            # [FIXED] Amplify the reward signal so the agent "cares" more about yield
+            # This prevents it from taking the "do nothing" action out of fear.
+            scaled_reward = reward * 10.0
+
+            rewards[step] = torch.tensor(scaled_reward, device=device, dtype=torch.float32)
             costs[step] = torch.tensor(step_cost, device=device, dtype=torch.float32)
 
             next_obs = torch.tensor(next_obs, device=device, dtype=torch.float32)
