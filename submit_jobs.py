@@ -362,7 +362,6 @@ jobs = [
             "--track",
             "--track-resources", "True",
             "alg:PPO_Lag_rate",
-            "--alg.use-pid", "True",
             "--alg.num-steps", "4096",
             "--alg.lagrangian-learning-rate", "0.01",
             "--alg.initial-lambda", "0.05",
