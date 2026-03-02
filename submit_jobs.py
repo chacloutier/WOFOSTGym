@@ -452,8 +452,7 @@ jobs = [
             "alg:PPO",
             "--alg.num-steps", "4096",
             "--alg.ent-coef", "0.01",
-            "--alg.terminate-on-violation", "True",
-            "--alg.seed", "1"
+            "--alg.terminate-on-violation",
         ]
     },
     {
@@ -482,8 +481,7 @@ jobs = [
             "--alg.lagrangian-learning-rate", "0.01",
             "--alg.initial-lambda", "0.05",
             "--alg.ent-coef", "0.01",
-            "--alg.terminate-on-violation", "True",
-            "--alg.seed", "1"
+            "--alg.terminate-on-violation",
         ]
     },
     {
@@ -511,8 +509,7 @@ jobs = [
             "--alg.lagrangian-learning-rate", "0.01",
             "--alg.initial-lambda", "0.05",
             "--alg.ent-coef", "0.01",
-            "--alg.terminate-on-violation", "True",
-            "--alg.seed", "1"
+            "--alg.terminate-on-violation",
         ]
     }
 ]
