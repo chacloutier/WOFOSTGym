@@ -430,12 +430,12 @@ jobs = [
 
 jobs = [
     {
-        "name": "PPO_Pear_Term",
+        "name": "PPO_Pear_Smooth_Constraint",
         "agent_type": "PPO",
         "args": [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
-            "--env_reward", "RewardScalingWrapper",
+            "--env_reward", "DenseSmoothConstraintRewardWrapper",
             "--max_n", "80.0",
             "--max_p", "80.0",
             "--max_k", "80.0",
@@ -450,19 +450,17 @@ jobs = [
             "--track",
             "--track-resources", "True",
             "alg:PPO",
-            "--alg.no-norm-adv",
             "--alg.num-steps", "4096",
             "--alg.ent-coef", "0.01",
-            "--alg.terminate-on-violation",
         ]
     },
     {
-        "name": "PPO_Lag_Pear_Term",
+        "name": "PPO_Lag_Pear_Dense_Reward",
         "agent_type": "PPO_Lag",
         "args": [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
-            "--env_reward", "RewardScalingWrapper",
+            "--env_reward", "DenseLagrangianRewardWrapper",
             "--max_n", "80.0",
             "--max_p", "80.0",
             "--max_k", "80.0",
@@ -477,22 +475,20 @@ jobs = [
             "--track",
             "--track-resources", "True",
             "alg:PPO_Lag",
-            "--alg.no-norm-adv",
             "--alg.num-steps", "4096",
             "--alg.cost-limit", "0.05",
             "--alg.lagrangian-learning-rate", "0.01",
             "--alg.initial-lambda", "0.05",
             "--alg.ent-coef", "0.01",
-            "--alg.terminate-on-violation",
         ]
     },
     {
-        "name": "PPO_Lag_Rate_Pear_Term",
+        "name": "PPO_Lag_Rate_Pear_Dense_Reward",
         "agent_type": "PPO_Lag_rate",
         "args": [
             "--env-id", "perennial-lnpkw-v0",
             "--agro-file", "pear_agro.yaml",
-            "--env_reward", "RewardScalingWrapper",
+            "--env_reward", "DenseLagrangianRewardWrapper",
             "--max_n", "80.0",
             "--max_p", "80.0",
             "--max_k", "80.0",
@@ -507,12 +503,10 @@ jobs = [
             "--track",
             "--track-resources", "True",
             "alg:PPO_Lag_rate",
-            "--alg.no-norm-adv",
             "--alg.num-steps", "4096",
             "--alg.lagrangian-learning-rate", "0.01",
             "--alg.initial-lambda", "0.05",
             "--alg.ent-coef", "0.01",
-            "--alg.terminate-on-violation",
         ]
     }
 ]

@@ -371,6 +371,7 @@ def train(kwargs: Namespace):
 
         # ---------------- PPO Update ----------------
         inds = np.arange(args.batch_size)
+        epoch_entropy = []
 
         for epoch in range(args.update_epochs):
             np.random.shuffle(inds)
@@ -382,15 +383,21 @@ def train(kwargs: Namespace):
                 )
 
                 ratio = (newlogp - b_logprobs[mb]).exp()
+                
+                # Store entropy for accurate logging
+                epoch_entropy.append(entropy.mean().item())
 
                 mb_adv = b_advantages[mb]
-                if args.norm_adv:
-                    mb_adv = (mb_adv - mb_adv.mean()) / (mb_adv.std() + 1e-8)
-
+                
                 lam = agent.get_lagrange_multiplier().detach() + p_term_lambda
                 weighted_cost = (b_cost_advantages[mb] * lam.unsqueeze(0)).sum(dim=1)
 
+                # 1. COMBINE FIRST
                 combined_adv = mb_adv - weighted_cost
+
+                # 2. THEN NORMALIZE
+                if args.norm_adv:
+                    combined_adv = (combined_adv - combined_adv.mean()) / (combined_adv.std() + 1e-8)
 
                 pg_loss = torch.max(
                     -combined_adv * ratio,
@@ -426,8 +433,13 @@ def train(kwargs: Namespace):
         writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
         writer.add_scalar("losses/cost_value_loss", cv_loss.item(), global_step)
         writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
-        writer.add_scalar("losses/entropy", entropy.mean().item(), global_step)
+        writer.add_scalar("losses/entropy", np.mean(epoch_entropy), global_step)
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+        writer.add_scalar("debug/adv_mean", b_advantages.mean(), global_step)
+        writer.add_scalar("debug/adv_std", b_advantages.std(), global_step)
+        writer.add_scalar("debug/pg_loss", pg_loss.item(), global_step)
+        writer.add_scalar("debug/v_loss", v_loss.item(), global_step)
+    
 
     envs.close()
     writer.close()

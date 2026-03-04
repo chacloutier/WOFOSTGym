@@ -374,6 +374,7 @@ def train(kwargs: Namespace) -> None:
 
         b_inds = np.arange(args.batch_size)
         clipfracs = []
+        epoch_entropy = []
         
         # --- Update Phase ---
         for epoch in range(args.update_epochs):
@@ -385,6 +386,9 @@ def train(kwargs: Namespace) -> None:
                 _, newlogprob, entropy, newvalue, newcostvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions.long()[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
+                
+                # Store entropy for accurate logging
+                epoch_entropy.append(entropy.mean().item())
 
                 with torch.no_grad():
                     old_approx_kl = (-logratio).mean()
@@ -397,12 +401,12 @@ def train(kwargs: Namespace) -> None:
                 mb_advantages = b_advantages[mb_inds]
                 mb_cost_advantages = b_cost_advantages[mb_inds]
 
-                # Normalize advantages
-                if args.norm_adv:
-                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
-                
-                # Combine: Reward Adv - Lambda * Cost Adv
+                # 1. COMBINE FIRST to preserve the true mathematical ratio
                 combined_advantages = mb_advantages - cur_lambda * mb_cost_advantages
+                
+                # 2. THEN NORMALIZE the combined signal
+                if args.norm_adv:
+                    combined_advantages = (combined_advantages - combined_advantages.mean()) / (combined_advantages.std() + 1e-8)
 
                 # Policy Loss
                 pg_loss1 = -combined_advantages * ratio
@@ -434,11 +438,9 @@ def train(kwargs: Namespace) -> None:
                     cv_loss = 0.5 * cv_loss_max.mean()
                 else:
                     cv_loss = 0.5 * ((newcostvalue - b_cost_returns[mb_inds]) ** 2).mean()
-
-                entropy_loss = entropy.mean()
                 
                 # Total Loss
-                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef + cv_loss * args.vf_coef
+                loss = pg_loss - args.ent_coef * entropy.mean() + v_loss * args.vf_coef + cv_loss * args.vf_coef
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -467,12 +469,16 @@ def train(kwargs: Namespace) -> None:
         writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
         writer.add_scalar("losses/cost_value_loss", cv_loss.item(), global_step)
         writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
-        writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
+        writer.add_scalar("losses/entropy", np.mean(epoch_entropy), global_step)
         writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
         writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
         writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+        writer.add_scalar("debug/adv_mean", b_advantages.mean(), global_step)
+        writer.add_scalar("debug/adv_std", b_advantages.std(), global_step)
+        writer.add_scalar("debug/pg_loss", pg_loss.item(), global_step)
+        writer.add_scalar("debug/v_loss", v_loss.item(), global_step)
         
     envs.close()
     writer.close()
