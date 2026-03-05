@@ -83,7 +83,7 @@ def layer_init(layer: nn.Module, std: np.ndarray = np.sqrt(2), bias_const: float
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
 
-def extract_step_cost(infos: dict, args: Args, num_envs: int) -> np.ndarray:
+def extract_step_cost(infos: dict, dones: np.ndarray, args: Args, num_envs: int) -> np.ndarray:
     """
     Calculates cost based on specific nutrient constraints matching CPO logic.
     Returns array of shape (num_envs,) with 1.0 for violation, 0.0 for safe.
@@ -91,40 +91,24 @@ def extract_step_cost(infos: dict, args: Args, num_envs: int) -> np.ndarray:
     costs = np.zeros(num_envs)
     
     # Handle Vectorized Environment (Dictionary of Arrays)
-    if "track/total_n" in infos:
-        for i in range(num_envs):
-            # Extract cumulative totals for this environment instance
-            n = infos["track/total_n"][i]
-            p = infos["track/total_p"][i]
-            k = infos["track/total_k"][i]
-            w = infos["track/total_w"][i]
-            
-            # Check constraints
-            if n > args.max_n:
-                costs[i] += (n - args.max_n) / args.max_n
-            if k > args.max_k:
-                costs[i] += (k - args.max_k) / args.max_k
-            if p > args.max_p:
-                costs[i] += (p - args.max_p) / args.max_p
-            if w > args.max_w:
-                costs[i] += (w - args.max_w) / args.max_w
-                
-    # Handle List of Dicts (Standard Gym) or missing keys
-    elif isinstance(infos, list):
-        for i, info in enumerate(infos):
-            n = info.get("track/total_n", 0.0)
-            p = info.get("track/total_p", 0.0)
-            k = info.get("track/total_k", 0.0)
-            w = info.get("track/total_w", 0.0)
-            
-            if n > args.max_n:
-                costs[i] += (n - args.max_n) / args.max_n
-            if k > args.max_k:
-                costs[i] += (k - args.max_k) / args.max_k
-            if p > args.max_p:
-                costs[i] += (p - args.max_p) / args.max_p
-            if w > args.max_w:
-                costs[i] += (w - args.max_w) / args.max_w
+    for i in range(num_envs):
+        if not dones[i]:
+            continue
+        # Extract cumulative totals for this environment instance
+        n = infos["track/total_n"][i]
+        p = infos["track/total_p"][i]
+        k = infos["track/total_k"][i]
+        w = infos["track/total_w"][i]
+        
+        # Check constraints
+        if n > args.max_n:
+            costs[i] += (n - args.max_n) / args.max_n
+        if k > args.max_k:
+            costs[i] += (k - args.max_k) / args.max_k
+        if p > args.max_p:
+            costs[i] += (p - args.max_p) / args.max_p
+        if w > args.max_w:
+            costs[i] += (w - args.max_w) / args.max_w
                 
     return costs
 
@@ -301,7 +285,7 @@ def train(kwargs: Namespace) -> None:
             next_done = np.logical_or(terminations, truncations)
             
             # --- UPDATED: Specific Cost Calculation ---
-            step_cost = extract_step_cost(infos, args, args.num_envs)
+            step_cost = extract_step_cost(infos, next_done, args, args.num_envs)
             
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             costs[step] = torch.tensor(step_cost).to(device).view(-1)

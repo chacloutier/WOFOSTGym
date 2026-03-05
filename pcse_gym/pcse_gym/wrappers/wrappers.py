@@ -1086,150 +1086,85 @@ class RewardScalingWrapper(RewardWrapper):
         # 2. Return Scaled Reward
         return raw_reward * self.scale_factor
 
-class DenseSmoothConstraintRewardWrapper(RewardWrapper):
-    """
-    The ultimate wrapper for standard PPO. 
-    Combines dense agronomic milestone rewards (to solve sparse credit assignment) 
-    with a smooth quadratic penalty (to safely enforce constraints without cliffs).
-    """
-
+class DenseLagrangianRewardWrapper(RewardWrapper):
     def __init__(self, env: gym.Env, args: Namespace) -> None:
         super().__init__(env)
         self.env = env
-        
-        # Yield scaling
         self.scale_factor = getattr(args, 'reward_scale', 1e-3)
-
-        # Constraint limits
-        self.max_n = getattr(args, 'max_n', float('inf'))
-        self.max_p = getattr(args, 'max_p', float('inf'))
-        self.max_k = getattr(args, 'max_k', float('inf'))
-        self.max_w = getattr(args, 'max_w', float('inf'))
-        
-        # Smooth penalty multiplier (tune this if it violates too much or is too scared)
-        self.penalty_weight = 50.0 
-
-        # Internal state of the Reward Machine
         self.u_curr = 0
-
-        # Dense milestone rewards
-        self.rm_rewards = {
-            1: 1.0,   # Emergence (DVS > 0)
-            2: 2.0,   # Flowering (DVS > 1)
-            3: 5.0    # Maturity (DVS > 2)
-        }
+        self.rm_rewards = {1: 1.0, 2: 2.0, 3: 5.0}
 
     def reset(self, **kwargs: dict) -> tuple[np.ndarray, dict]:
         self.u_curr = 0  
         return self.env.reset(**kwargs)
 
     def _get_reward(self, output: dict, act_tuple: tuple[float, float, float, float]) -> float:
-        # 1. Extract Yield, DVS, and Usage
-        if isinstance(self.env.unwrapped, Multi_NPK_Env):
-            dvs_vals = [output[i][-1]["DVS"] for i in range(self.env.unwrapped.num_farms) if output[i][-1]["DVS"] is not None]
-            current_dvs = np.mean(dvs_vals) if len(dvs_vals) > 0 else 0.0
-            
-            yield_reward = sum(output[i][-1]["WSO"] or 0 for i in range(self.env.unwrapped.num_farms))
-            
-            tot_n = np.max([output[i][-1]["TOTN"] for i in range(self.env.unwrapped.num_farms)])
-            tot_p = np.max([output[i][-1]["TOTP"] for i in range(self.env.unwrapped.num_farms)])
-            tot_k = np.max([output[i][-1]["TOTK"] for i in range(self.env.unwrapped.num_farms)])
-            tot_w = np.max([output[i][-1]["TOTIRRIG"] for i in range(self.env.unwrapped.num_farms)])
-        else:
-            current_dvs = output[-1]["DVS"] if output[-1]["DVS"] is not None else 0.0
-            yield_reward = output[-1]["WSO"] if output[-1]["WSO"] is not None else 0
-            
-            tot_n = output[-1]["TOTN"]
-            tot_p = output[-1]["TOTP"]
-            tot_k = output[-1]["TOTK"]
-            tot_w = output[-1]["TOTIRRIG"]
+        # Check if this is the final day of the season
+        is_terminated = output[-1]["FIN"] == 1.0 or output[-1]["FIN"] is None
+        is_truncated = self.env.unwrapped.date >= self.env.unwrapped.soil_end_date
+        is_done = is_terminated or is_truncated
 
-        # 2. Calculate Dense Reward Machine Bonus
+        current_dvs = output[-1]["DVS"] if output[-1]["DVS"] is not None else 0.0
+        
+        # Reward Machine (Dense Signal given during the season)
         rm_bonus = 0.0
-        u_next = self.u_curr
-
         if self.u_curr == 0 and current_dvs > 0.0:
-            u_next = 1
-            rm_bonus = self.rm_rewards[1]
+            self.u_curr = 1; rm_bonus = self.rm_rewards[1]
         elif self.u_curr == 1 and current_dvs >= 1.0:
-            u_next = 2
-            rm_bonus = self.rm_rewards[2]
+            self.u_curr = 2; rm_bonus = self.rm_rewards[2]
         elif self.u_curr == 2 and current_dvs >= 2.0:
-            u_next = 3
-            rm_bonus = self.rm_rewards[3]
+            self.u_curr = 3; rm_bonus = self.rm_rewards[3]
 
-        self.u_curr = u_next
+        # ONLY give the Yield payload on the final day
+        if is_done:
+            yield_reward = output[-1]["WSO"] if output[-1]["WSO"] is not None else 0
+            return (yield_reward * self.scale_factor) + rm_bonus
+        else:
+            return rm_bonus
 
-        # 3. Calculate Smooth Overages (Soft Wall)
-        over_n = max(0.0, tot_n - self.max_n)
-        over_p = max(0.0, tot_p - self.max_p)
-        over_k = max(0.0, tot_k - self.max_k)
-        over_w = max(0.0, tot_w - self.max_w)
 
-        # Apply Quadratic Penalty
-        penalty = self.penalty_weight * ((over_n**2) + (over_p**2) + (over_k**2) + (over_w**2))
-
-        # 4. Return Combined Reward
-        return (yield_reward * self.scale_factor) + rm_bonus - penalty
-    
-class DenseLagrangianRewardWrapper(RewardWrapper):
-    """
-    Provides dense rewards for plant growth to solve the sparse reward (credit assignment) problem.
-    CRITICAL: This wrapper DOES NOT penalize for constraint violations. It leaves the 
-    enforcement of N/P/K/W limits entirely to the PPO-Lagrangian Cost Critic and Lambda multiplier.
-    """
-
+class DenseSmoothConstraintRewardWrapper(RewardWrapper):
     def __init__(self, env: gym.Env, args: Namespace) -> None:
         super().__init__(env)
         self.env = env
-        
-        # Scaling factor for the final yield
         self.scale_factor = getattr(args, 'reward_scale', 1e-3)
-
-        # Internal state of the Reward Machine
+        self.max_n = getattr(args, 'max_n', float('inf'))
+        self.max_p = getattr(args, 'max_p', float('inf'))
+        self.max_k = getattr(args, 'max_k', float('inf'))
+        self.max_w = getattr(args, 'max_w', float('inf'))
+        self.penalty_weight = 50.0 
         self.u_curr = 0
-
-        # Dense milestone rewards (Scaled down so they guide the agent without dwarfing the final yield)
-        self.rm_rewards = {
-            1: 1.0,   # Bonus for reaching Emergence (DVS > 0)
-            2: 2.0,   # Bonus for reaching Flowering (DVS > 1)
-            3: 5.0    # Bonus for reaching Maturity (DVS > 2)
-        }
+        self.rm_rewards = {1: 1.0, 2: 2.0, 3: 5.0}
 
     def reset(self, **kwargs: dict) -> tuple[np.ndarray, dict]:
-        self.u_curr = 0  # Reset RM to initial state
+        self.u_curr = 0  
         return self.env.reset(**kwargs)
 
     def _get_reward(self, output: dict, act_tuple: tuple[float, float, float, float]) -> float:
-        # 1. Extract Yield and DVS
-        if isinstance(self.env.unwrapped, Multi_NPK_Env):
-            dvs_vals = [output[i][-1]["DVS"] for i in range(self.env.unwrapped.num_farms) if output[i][-1]["DVS"] is not None]
-            current_dvs = np.mean(dvs_vals) if len(dvs_vals) > 0 else 0.0
-            
-            yield_reward = 0
-            for i in range(self.env.unwrapped.num_farms):
-                yield_reward += output[i][-1]["WSO"] if output[i][-1]["WSO"] is not None else 0
-        else:
-            current_dvs = output[-1]["DVS"] if output[-1]["DVS"] is not None else 0.0
-            yield_reward = output[-1]["WSO"] if output[-1]["WSO"] is not None else 0
+        is_terminated = output[-1]["FIN"] == 1.0 or output[-1]["FIN"] is None
+        is_truncated = self.env.unwrapped.date >= self.env.unwrapped.soil_end_date
+        is_done = is_terminated or is_truncated
 
-        # 2. Calculate Reward Machine Bonus (Dense Signal)
+        current_dvs = output[-1]["DVS"] if output[-1]["DVS"] is not None else 0.0
+        
+        # Reward Machine (Dense Signal)
         rm_bonus = 0.0
-        u_next = self.u_curr
-
         if self.u_curr == 0 and current_dvs > 0.0:
-            u_next = 1
-            rm_bonus = self.rm_rewards[1]
+            self.u_curr = 1; rm_bonus = self.rm_rewards[1]
         elif self.u_curr == 1 and current_dvs >= 1.0:
-            u_next = 2
-            rm_bonus = self.rm_rewards[2]
+            self.u_curr = 2; rm_bonus = self.rm_rewards[2]
         elif self.u_curr == 2 and current_dvs >= 2.0:
-            u_next = 3
-            rm_bonus = self.rm_rewards[3]
+            self.u_curr = 3; rm_bonus = self.rm_rewards[3]
 
-        self.u_curr = u_next
-
-        # 3. Return Combined Reward
-        # Notice there is NO "is_violating" penalty check here! 
-        # We let the Lagrangian lambda handle the punishments.
-        return (yield_reward * self.scale_factor) + rm_bonus
+        # ONLY calculate Yield and Penalties on the final day!
+        if is_done:
+            yield_reward = output[-1]["WSO"] if output[-1]["WSO"] is not None else 0
+            tot_n, tot_p, tot_k, tot_w = output[-1]["TOTN"], output[-1]["TOTP"], output[-1]["TOTK"], output[-1]["TOTIRRIG"]
+            
+            over_n, over_p = max(0.0, tot_n - self.max_n), max(0.0, tot_p - self.max_p)
+            over_k, over_w = max(0.0, tot_k - self.max_k), max(0.0, tot_w - self.max_w)
+            
+            penalty = self.penalty_weight * ((over_n**2) + (over_p**2) + (over_k**2) + (over_w**2))
+            return (yield_reward * self.scale_factor) + rm_bonus - penalty
+        else:
+            return rm_bonus
