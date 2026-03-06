@@ -1091,6 +1091,10 @@ class DenseLagrangianRewardWrapper(RewardWrapper):
         super().__init__(env)
         self.env = env
         self.scale_factor = getattr(args, 'reward_scale', 1e-3)
+        self.max_n = getattr(args, 'max_n', float('inf'))
+        self.max_w = getattr(args, 'max_w', float('inf'))
+        self.max_k = getattr(args, 'max_k', float('inf'))
+        self.max_p = getattr(args, 'max_p', float('inf'))
         self.u_curr = 0
         self.rm_rewards = {1: 1.0, 2: 2.0, 3: 5.0}
 

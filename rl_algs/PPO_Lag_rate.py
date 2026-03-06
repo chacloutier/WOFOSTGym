@@ -45,6 +45,7 @@ class Args(RL_Args):
     # --- Lagrangian / Constraint Control ---
     lagrangian_learning_rate: float = 5e-2
     initial_lambda: float = 1.0
+    fixed_lambda: bool = False
 
     pid_kp: float = 0.1          # proportional gain
     target_limit: float = 0.95   # desired mean usage rate
@@ -420,10 +421,11 @@ def train(kwargs: Namespace):
                 optimizer.step()
 
         # ---------------- Dual Update ----------------
-        lambda_loss = -(agent.log_lagrange_multiplier * violation.detach()).sum()
-        lagrange_optimizer.zero_grad()
-        lambda_loss.backward()
-        lagrange_optimizer.step()
+        if not args.fixed_lambda:
+            lambda_loss = -(agent.log_lagrange_multiplier * violation.detach()).sum()
+            lagrange_optimizer.zero_grad()
+            lambda_loss.backward()
+            lagrange_optimizer.step()
 
         # ---------------- Logging ----------------
         writer.add_scalar("charts/lambda_mean", agent.get_lagrange_multiplier().mean().item(), global_step)

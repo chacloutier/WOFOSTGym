@@ -57,6 +57,8 @@ class Args(RL_Args):
     """Learning rate for the Lagrange multiplier"""
     initial_lambda: float = 1.0
     """Initial value for the Lagrange multiplier"""
+    fixed_lambda: bool = False
+    """Toggle to freeze the Lagrange multiplier at its initial value"""
 
     # --- Constraint Thresholds (From CPO) ---
     max_n: float = 80.0
@@ -310,7 +312,7 @@ def train(kwargs: Namespace) -> None:
                     writer.add_scalar("constraints/total_p", infos["track/total_p"][0], global_step)
                     writer.add_scalar("constraints/total_k", infos["track/total_k"][0], global_step)
                     writer.add_scalar("constraints/total_w", infos["track/total_w"][0], global_step)
-                    writer.add_scalar("constraints/violation_rate", infos["track/is_violating"], global_step)
+                    writer.add_scalar("constraints/violation_rate", infos["track/is_violating"][0], global_step)
 
         # --- GAE Calculation (Double GAE) ---
         with torch.no_grad():
@@ -438,10 +440,11 @@ def train(kwargs: Namespace) -> None:
         mean_cost = b_cost_returns.mean()
         violation = mean_cost - args.cost_limit
         
-        lagrange_optimizer.zero_grad()
-        lambda_loss = -agent.get_lagrange_multiplier() * violation.detach()
-        lambda_loss.backward()
-        lagrange_optimizer.step()
+        if not args.fixed_lambda:
+            lagrange_optimizer.zero_grad()
+            lambda_loss = -agent.get_lagrange_multiplier() * violation.detach()
+            lambda_loss.backward()
+            lagrange_optimizer.step()
 
         # Logging
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
