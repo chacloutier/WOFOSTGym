@@ -86,7 +86,7 @@ def log_constraint_infos(writer, infos, global_step):
         if "track/is_violating" in infos:
             writer.add_scalar(
                 "constraints/violation_rate",
-                float(infos["track/is_violating"]),
+                float(infos["track/is_violating"][0]),
                 global_step,
             )
 
