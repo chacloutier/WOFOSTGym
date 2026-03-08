@@ -713,6 +713,60 @@ jobs = [
     }
 ]
 
+jobs = [
+    {
+        "name": "PPO_Pear_Smooth_Constraint",
+        "agent_type": "PPO",
+        "args": [
+            "--env-id", "perennial-lnpkw-v0",
+            "--agro-file", "pear_agro.yaml",
+            "--env_reward", "DenseSmoothConstraintRewardWrapper",
+            "--max_n", "80.0",
+            "--max_p", "80.0",
+            "--max_k", "80.0",
+            "--max_w", "40.0",
+            "--npk.max_n", "80.0",
+            "--npk.max_p", "80.0",
+            "--npk.max_k", "80.0",
+            "--npk.max_w", "40.0",
+            "--npk.ag.crop-name", "pear",
+            "--npk.ag.crop-variety", "pear_1",
+            "--npk.intvn_interval", "14",
+            "--track",
+            "--track-resources", "True",
+            "alg:PPO",
+            "--alg.num-steps", "4096",
+            "--alg.ent-coef", "0.01",
+        ]
+    },
+    {
+        "name": "PPO_Pear_Smooth_Constraint",
+        "agent_type": "PPO",
+        "args": [
+            "--env-id", "perennial-lnpkw-v0",
+            "--agro-file", "pear_agro.yaml",
+            "--env_reward", "DenseSmoothConstraintRewardWrapper",
+            "--max_n", "80.0",
+            "--max_p", "80.0",
+            "--max_k", "80.0",
+            "--max_w", "40.0",
+            "--npk.max_n", "80.0",
+            "--npk.max_p", "80.0",
+            "--npk.max_k", "80.0",
+            "--npk.max_w", "40.0",
+            "--npk.ag.crop-name", "pear",
+            "--npk.ag.crop-variety", "pear_1",
+            "--npk.intvn_interval", "14",
+            "--track",
+            "--track-resources", "True",
+            "alg:PPO",
+            "--alg.no-norm-adv",
+            "--alg.num-steps", "4096",
+            "--alg.ent-coef", "0.01",
+        ]
+    },
+]
+
 # SLURM Template for Compute Canada
 slurm_template = """#!/bin/bash
 #SBATCH --account=def-mcrowley_gpu
