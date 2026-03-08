@@ -86,7 +86,7 @@ def log_constraint_infos(writer, infos, global_step):
         if "track/is_violating" in infos:
             writer.add_scalar(
                 "constraints/violation_rate",
-                float(infos["track/is_violating"][0]),
+                float(infos["track/is_violating"]),
                 global_step,
             )
 
@@ -369,6 +369,13 @@ def train(kwargs: Namespace):
             
             violation = mean_episodic_cost - args.target_limit
             p_term_lambda = torch.clamp(args.pid_kp * violation, min=0.0)
+        
+        lam = agent.get_lagrange_multiplier().detach() + p_term_lambda
+        b_weighted_cost = (b_cost_advantages * lam.unsqueeze(0)).sum(dim=1)
+        b_combined_adv = b_advantages - b_weighted_cost
+
+        if args.norm_adv:
+            b_combined_adv = (b_combined_adv - b_combined_adv.mean()) / (b_combined_adv.std() + 1e-8)
 
         # ---------------- PPO Update ----------------
         inds = np.arange(args.batch_size)
@@ -388,17 +395,7 @@ def train(kwargs: Namespace):
                 # Store entropy for accurate logging
                 epoch_entropy.append(entropy.mean().item())
 
-                mb_adv = b_advantages[mb]
-                
-                lam = agent.get_lagrange_multiplier().detach() + p_term_lambda
-                weighted_cost = (b_cost_advantages[mb] * lam.unsqueeze(0)).sum(dim=1)
-
-                # 1. COMBINE FIRST
-                combined_adv = mb_adv - weighted_cost
-
-                # 2. THEN NORMALIZE
-                if args.norm_adv:
-                    combined_adv = (combined_adv - combined_adv.mean()) / (combined_adv.std() + 1e-8)
+                combined_adv = b_combined_adv[mb]
 
                 pg_loss = torch.max(
                     -combined_adv * ratio,

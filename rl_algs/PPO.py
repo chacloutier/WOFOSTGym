@@ -260,6 +260,9 @@ def train(kwargs: Namespace) -> None:
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
 
+        if args.norm_adv:
+            b_advantages = (b_advantages - b_advantages.mean()) / (b_advantages.std() + 1e-8)
+
         b_inds = np.arange(args.batch_size)
         clipfracs = []
         for epoch in range(args.update_epochs):
@@ -279,8 +282,8 @@ def train(kwargs: Namespace) -> None:
                     clipfracs += [((ratio - 1.0).abs() > args.clip_coef).float().mean().item()]
 
                 mb_advantages = b_advantages[mb_inds]
-                if args.norm_adv:
-                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+                # if args.norm_adv:
+                #     mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
 
                 pg_loss1 = -mb_advantages * ratio
                 pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)

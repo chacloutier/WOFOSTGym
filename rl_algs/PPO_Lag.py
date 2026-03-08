@@ -358,6 +358,12 @@ def train(kwargs: Namespace) -> None:
         b_values = values.reshape(-1)
         b_cost_values = cost_values.reshape(-1)
 
+        cur_lambda = agent.get_lagrange_multiplier().item()
+        b_combined_advantages = b_advantages - cur_lambda * b_cost_advantages
+        
+        if args.norm_adv:
+            b_combined_advantages = (b_combined_advantages - b_combined_advantages.mean()) / (b_combined_advantages.std() + 1e-8)
+
         b_inds = np.arange(args.batch_size)
         clipfracs = []
         epoch_entropy = []
@@ -381,18 +387,7 @@ def train(kwargs: Namespace) -> None:
                     approx_kl = ((ratio - 1) - logratio).mean()
                     clipfracs += [((ratio - 1.0).abs() > args.clip_coef).float().mean().item()]
 
-                # --- Lagrangian Advantage ---
-                cur_lambda = agent.get_lagrange_multiplier().item()
-                
-                mb_advantages = b_advantages[mb_inds]
-                mb_cost_advantages = b_cost_advantages[mb_inds]
-
-                # 1. COMBINE FIRST to preserve the true mathematical ratio
-                combined_advantages = mb_advantages - cur_lambda * mb_cost_advantages
-                
-                # 2. THEN NORMALIZE the combined signal
-                if args.norm_adv:
-                    combined_advantages = (combined_advantages - combined_advantages.mean()) / (combined_advantages.std() + 1e-8)
+                combined_advantages = b_combined_advantages[mb_inds]
 
                 # Policy Loss
                 pg_loss1 = -combined_advantages * ratio
