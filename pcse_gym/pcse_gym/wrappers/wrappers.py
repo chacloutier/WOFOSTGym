@@ -1097,9 +1097,11 @@ class DenseLagrangianRewardWrapper(RewardWrapper):
         self.max_p = getattr(args, 'max_p', float('inf'))
         self.u_curr = 0
         self.rm_rewards = {1: 1.0, 2: 2.0, 3: 5.0}
+        self.prev_wso = 0.0
 
     def reset(self, **kwargs: dict) -> tuple[np.ndarray, dict]:
-        self.u_curr = 0  
+        self.u_curr = 0
+        self.prev_wso = 0.0
         return self.env.reset(**kwargs)
 
     def _get_reward(self, output: dict, act_tuple: tuple[float, float, float, float]) -> float:
@@ -1119,12 +1121,21 @@ class DenseLagrangianRewardWrapper(RewardWrapper):
         elif self.u_curr == 2 and current_dvs >= 2.0:
             self.u_curr = 3; rm_bonus = self.rm_rewards[3]
 
-        # ONLY give the Yield payload on the final day
-        if is_done:
-            yield_reward = output[-1]["WSO"] if output[-1]["WSO"] is not None else 0
-            return (yield_reward * self.scale_factor) + rm_bonus
-        else:
-            return rm_bonus
+        # # ONLY give the Yield payload on the final day
+        # if is_done:
+        #     yield_reward = output[-1]["WSO"] if output[-1]["WSO"] is not None else 0
+        #     return (yield_reward * self.scale_factor) + rm_bonus
+        # else:
+        #     return rm_bonus
+
+        current_wso = output[-1]["WSO"] if output[-1]["WSO"] is not None else 0.0
+
+        delta_yield = max(0.0, current_wso - self.prev_wso)
+        self.prev_wso = current_wso
+
+        yield_reward = delta_yield * self.scale_factor
+
+        return yield_reward + rm_bonus
 
 
 class DenseSmoothConstraintRewardWrapper(RewardWrapper):
@@ -1132,43 +1143,86 @@ class DenseSmoothConstraintRewardWrapper(RewardWrapper):
         super().__init__(env)
         self.env = env
         self.scale_factor = getattr(args, 'reward_scale', 1e-3)
+
         self.max_n = getattr(args, 'max_n', float('inf'))
         self.max_p = getattr(args, 'max_p', float('inf'))
         self.max_k = getattr(args, 'max_k', float('inf'))
         self.max_w = getattr(args, 'max_w', float('inf'))
+
         self.penalty_weight = 50.0 
+
         self.u_curr = 0
         self.rm_rewards = {1: 1.0, 2: 2.0, 3: 5.0}
 
+        # NEW: track yield growth
+        self.prev_wso = 0.0
+
+
     def reset(self, **kwargs: dict) -> tuple[np.ndarray, dict]:
-        self.u_curr = 0  
+        self.u_curr = 0
+        self.prev_wso = 0.0
         return self.env.reset(**kwargs)
 
+
     def _get_reward(self, output: dict, act_tuple: tuple[float, float, float, float]) -> float:
-        is_terminated = output[-1]["FIN"] == 1.0 or output[-1]["FIN"] is None
+
+        last = output[-1]
+
+        is_terminated = last["FIN"] == 1.0 or last["FIN"] is None
         is_truncated = self.env.unwrapped.date >= self.env.unwrapped.soil_end_date
         is_done = is_terminated or is_truncated
 
-        current_dvs = output[-1]["DVS"] if output[-1]["DVS"] is not None else 0.0
-        
-        # Reward Machine (Dense Signal)
-        rm_bonus = 0.0
-        if self.u_curr == 0 and current_dvs > 0.0:
-            self.u_curr = 1; rm_bonus = self.rm_rewards[1]
-        elif self.u_curr == 1 and current_dvs >= 1.0:
-            self.u_curr = 2; rm_bonus = self.rm_rewards[2]
-        elif self.u_curr == 2 and current_dvs >= 2.0:
-            self.u_curr = 3; rm_bonus = self.rm_rewards[3]
+        current_dvs = last["DVS"] if last["DVS"] is not None else 0.0
 
-        # ONLY calculate Yield and Penalties on the final day!
+
+        # -------------------------
+        # Reward Machine
+        # -------------------------
+
+        rm_bonus = 0.0
+
+        if self.u_curr == 0 and current_dvs > 0.0:
+            self.u_curr = 1
+            rm_bonus = self.rm_rewards[1]
+
+        elif self.u_curr == 1 and current_dvs >= 1.0:
+            self.u_curr = 2
+            rm_bonus = self.rm_rewards[2]
+
+        elif self.u_curr == 2 and current_dvs >= 2.0:
+            self.u_curr = 3
+            rm_bonus = self.rm_rewards[3]
+
+
+        # -------------------------
+        # Dense Yield Growth Reward
+        # -------------------------
+
+        current_wso = last["WSO"] if last["WSO"] is not None else 0.0
+
+        delta_wso = max(0.0, current_wso - self.prev_wso)
+        self.prev_wso = current_wso
+
+        yield_reward = delta_wso * self.scale_factor
+
+
+        # -------------------------
+        # Final Constraint Penalty
+        # -------------------------
+
         if is_done:
-            yield_reward = output[-1]["WSO"] if output[-1]["WSO"] is not None else 0
-            tot_n, tot_p, tot_k, tot_w = output[-1]["TOTN"], output[-1]["TOTP"], output[-1]["TOTK"], output[-1]["TOTIRRIG"]
-            
-            over_n, over_p = max(0.0, tot_n - self.max_n), max(0.0, tot_p - self.max_p)
-            over_k, over_w = max(0.0, tot_k - self.max_k), max(0.0, tot_w - self.max_w)
-            
-            penalty = self.penalty_weight * ((over_n**2) + (over_p**2) + (over_k**2) + (over_w**2))
-            return (yield_reward * self.scale_factor) + rm_bonus - penalty
+            tot_n, tot_p = last["TOTN"], last["TOTP"]
+            tot_k, tot_w = last["TOTK"], last["TOTIRRIG"]
+
+            # Use Normalized, CLIPPED overages to prevent infinite trauma!
+            over_n = min(2.0, max(0.0, (tot_n - self.max_n) / self.max_n))
+            over_p = min(2.0, max(0.0, (tot_p - self.max_p) / self.max_p))
+            over_k = min(2.0, max(0.0, (tot_k - self.max_k) / self.max_k))
+            over_w = min(2.0, max(0.0, (tot_w - self.max_w) / self.max_w))
+
+            # Use Linear penalty
+            penalty = self.penalty_weight * (over_n + over_p + over_k + over_w)
+
+            return yield_reward + rm_bonus - penalty
         else:
-            return rm_bonus
+            return yield_reward + rm_bonus
