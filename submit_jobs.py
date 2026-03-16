@@ -1157,7 +1157,7 @@ slurm_template = """#!/bin/bash
 source $HOME/env/wofost_env/bin/activate 
 
 # Offline W&B Configuration
-export WANDB_MODE=online
+export WANDB_MODE=offline
 export WANDB_DIR={save_folder} 
 export WANDB_PROJECT="WOFOST-RL"
 export WANDB_ENTITY="chacloutier-4B"
@@ -1165,7 +1165,7 @@ if [ -f $HOME/.wandb_key ]; then
     export WANDB_API_KEY=$(cat $HOME/.wandb_key)
 fi
 
-wandb login --relogin
+# wandb login --relogin
 
 # 4. Run Command
 echo "Starting job on $(hostname)"
