@@ -865,177 +865,130 @@ class BudgetObservationWrapper(gym.Wrapper):
         
         return new_obs, info
 
-class SimpleRewardMachineWrapper(RewardWrapper):
-    """
-    Implements a simple Reward Machine (RM) based on crop development stages.
-
-    This wrapper gives the agent intermediate dense rewards for successfully
-    transitioning the plant through biological lifecycle stages.
-    """
-
+class DenseRewardMachineWrapper(RewardWrapper):
     def __init__(self, env: gym.Env, args: Namespace) -> None:
-        """Initialize the Reward Machine wrapper.
-
-        Args:
-            env: The environment to apply the wrapper
-            args: Namespace arguments (allows tuning rewards via CLI)
-        """
         super().__init__(env)
         self.env = env
-
-        # Load constraints from args for tracking purposes (used by Base Class)
+        self.scale_factor = getattr(args, 'reward_scale', 1e-3)
         self.max_n = getattr(args, 'max_n', float('inf'))
         self.max_w = getattr(args, 'max_w', float('inf'))
         self.max_k = getattr(args, 'max_k', float('inf'))
         self.max_p = getattr(args, 'max_p', float('inf'))
 
-        # Internal state of the Reward Machine u \in U
         self.u_curr = 0
-
-        # Rewards for transitioning between abstract states
-        self.rm_rewards = {
-            1: 100.0,   # Bonus for reaching Emergence (DVS > 0)
-            2: 200.0,   # Bonus for reaching Flowering (DVS > 1)
-            3: 500.0    # Bonus for reaching Maturity (DVS > 2)
-        }
+        self.prev_wso = 0.0
+        # SCALED DOWN: So they guide the agent, but don't overshadow the yield.
+        self.rm_rewards = {1: 0.1, 2: 0.2, 3: 0.5}
 
     def reset(self, **kwargs: dict) -> tuple[np.ndarray, dict]:
-        """Resets the environment and the Reward Machine state."""
-        self.u_curr = 0  # Reset RM to initial state
+        self.u_curr = 0  
+        self.prev_wso = 0.0
         return self.env.reset(**kwargs)
 
     def _get_reward(self, output: dict, act_tuple: tuple[float, float, float, float]) -> float:
-        """
-        Calculates the reward based on Reward Machine transitions.
-        R(s, u, s') = Yield + RM_Transition_Bonus
+        last = output[-1]
+        current_dvs = last["DVS"] if last["DVS"] is not None else 0.0
 
-        Includes "Void Clause": If constraints are violated, RM_Transition_Bonus is forfeited.
-        """
-        # 1. Extract State Variables (DVS, Yield, and Resource Usage)
-        if isinstance(self.env.unwrapped, Multi_NPK_Env):
-            # Multi-Env: Average DVS, Sum Yield
-            dvs_vals = [output[i][-1]["DVS"] for i in range(self.env.unwrapped.num_farms) if output[i][-1]["DVS"] is not None]
-            current_dvs = np.mean(dvs_vals) if len(dvs_vals) > 0 else 0.0
+        # Delta Yield
+        current_wso = last["WSO"] if last["WSO"] is not None else 0.0
+        delta_yield = max(0.0, current_wso - self.prev_wso)
+        self.prev_wso = current_wso
+        yield_reward = delta_yield * self.scale_factor
 
-            yield_reward = 0
-            for i in range(self.env.unwrapped.num_farms):
-                yield_reward += output[i][-1]["WSO"] if output[i][-1]["WSO"] is not None else 0
-
-            # Check Max usage across all farms (Strict Safety)
-            # We treat the system as violating if ANY farm exceeds the limit
-            tot_n = np.max([output[i][-1]["TOTN"] for i in range(self.env.unwrapped.num_farms)])
-            tot_w = np.max([output[i][-1]["TOTIRRIG"] for i in range(self.env.unwrapped.num_farms)])
-
-        else:
-            # Single-Env
-            current_dvs = output[-1]["DVS"] if output[-1]["DVS"] is not None else 0.0
-            yield_reward = output[-1]["WSO"] if output[-1]["WSO"] is not None else 0
-
-            tot_n = output[-1]["TOTN"]
-            tot_w = output[-1]["TOTIRRIG"]
-            tot_k = output[-1]["TOTK"]
-            tot_p = output[-1]["TOTP"]
-
-        # 2. Check for Violations
-        # Note: TOTN/TOTIRRIG only increase over time. Once violated, they stay violated.
+        tot_n, tot_w = last["TOTN"], last["TOTIRRIG"]
+        tot_k, tot_p = last["TOTK"], last["TOTP"]
         is_violating = (tot_n > self.max_n) or (tot_w > self.max_w) or (tot_k > self.max_k) or (tot_p > self.max_p)
 
-        # --- Reward Machine Logic ---
+        # Reward Machine
         rm_bonus = 0.0
-        u_next = self.u_curr
-
-        # U0 -> U1: Emergence
         if self.u_curr == 0 and current_dvs > 0.0:
-            u_next = 1
-            rm_bonus = self.rm_rewards[1]
-        # U1 -> U2: Flowering
+            self.u_curr = 1; rm_bonus = self.rm_rewards[1]
         elif self.u_curr == 1 and current_dvs >= 1.0:
-            u_next = 2
-            rm_bonus = self.rm_rewards[2]
-        # U2 -> U3: Maturity
+            self.u_curr = 2; rm_bonus = self.rm_rewards[2]
         elif self.u_curr == 2 and current_dvs >= 2.0:
-            u_next = 3
-            rm_bonus = self.rm_rewards[3]
+            self.u_curr = 3; rm_bonus = self.rm_rewards[3]
 
-        self.u_curr = u_next
-
-        # 3. The "Void" Clause
-        # If the agent is violating constraints, it forfeits the bonus!
+        # The "Void" Clause: No bonuses if violating
         if is_violating:
-            rm_bonus = 0
+            rm_bonus = 0.0
 
-        # Return Yield (Environmental Reward) + Bonus (Shaped Reward)
         return yield_reward + rm_bonus
     
-class ThresholdRespectingRewardWrapper(RewardWrapper):
-
+class DenseThresholdRespectingWrapper(RewardWrapper):
     def __init__(self, env: gym.Env, args: Namespace) -> None:
-        """Initialize the Reward wrapper.
-
-        Args:
-            env: The environment to apply the wrapper
-            args: Namespace arguments (allows tuning rewards via CLI)
-        """
         super().__init__(env)
         self.env = env
-
-        # Load constraints from args for tracking purposes (used by Base Class)
+        self.scale_factor = getattr(args, 'reward_scale', 1e-3)
         self.max_n = getattr(args, 'max_n', float('inf'))
         self.max_w = getattr(args, 'max_w', float('inf'))
         self.max_k = getattr(args, 'max_k', float('inf'))
         self.max_p = getattr(args, 'max_p', float('inf'))
+        self.prev_wso = 0.0
+
+    def reset(self, **kwargs: dict) -> tuple[np.ndarray, dict]:
+        self.prev_wso = 0.0
+        return self.env.reset(**kwargs)
 
     def _get_reward(self, output: dict, act_tuple: tuple[float, float, float, float]) -> float:
-        """
-        Calculates the reward based whether NPK or water was applied when the limit was going to be attained
-        """
-        # 1. Extract State Variables (DVS, Yield, and Resource Usage)
-        if isinstance(self.env.unwrapped, Multi_NPK_Env):
-            # Multi-Env: Sum Yield
-            yield_reward = 0
-            for i in range(self.env.unwrapped.num_farms):
-                yield_reward += output[i][-1]["WSO"] if output[i][-1]["WSO"] is not None else 0
+        last = output[-1]
 
-            # Check Max usage across all farms (Strict Safety)
-            # We treat the system as violating if ANY farm exceeds the limit
-            tot_n = np.max([output[i][-1]["TOTN"] for i in range(self.env.unwrapped.num_farms)])
-            tot_w = np.max([output[i][-1]["TOTIRRIG"] for i in range(self.env.unwrapped.num_farms)])
-            tot_k = np.max([output[i][-1]["TOTK"] for i in range(self.env.unwrapped.num_farms)])
-            tot_p = np.max([output[i][-1]["TOTP"] for i in range(self.env.unwrapped.num_farms)])
+        # Delta Yield
+        current_wso = last["WSO"] if last["WSO"] is not None else 0.0
+        delta_yield = max(0.0, current_wso - self.prev_wso)
+        self.prev_wso = current_wso
+        yield_reward = delta_yield * self.scale_factor
 
-        else:
-            # Single-Env
-            yield_reward = output[-1]["WSO"] if output[-1]["WSO"] is not None else 0
-
-            tot_n = output[-1]["TOTN"]
-            tot_w = output[-1]["TOTIRRIG"]
-            tot_k = output[-1]["TOTK"]
-            tot_p = output[-1]["TOTP"]
-
-        # 2. Check for Violations
+        tot_n, tot_w = last["TOTN"], last["TOTIRRIG"]
+        tot_k, tot_p = last["TOTK"], last["TOTP"]
         is_violating = (tot_n > self.max_n) or (tot_w > self.max_w) or (tot_k > self.max_k) or (tot_p > self.max_p)
 
         if is_violating:
-            if (any(act_tuple) != 0):
-                return 0
+            # The agent crossed the limit. 
+            # If they keep applying fertilizer, they get ZERO reward for the growth.
+            if any(act_tuple) != 0:
+                return 0.0
             else:
-                return yield_reward
+                return yield_reward # They get base yield if they stop applying
         
-        constraint_bonus = 500
+        # If they are under budget, amplify the yield reward by 50%
+        # This acts as the "Constraint Bonus" but scales naturally with actual farming success
+        constraint_multiplier = 1.5
         
-        if (yield_reward > 0) and (tot_p <= self.max_p) and (act_tuple[self.env.unwrapped.P] == 0):
-            constraint_bonus += 100
-        
-        if (yield_reward > 0) and (tot_n <= self.max_n) and (act_tuple[self.env.unwrapped.N] == 0):
-            constraint_bonus += 100
+        return yield_reward * constraint_multiplier
+    
+class DenseFertilizationThresholdWrapper(RewardWrapper):
+    def __init__(self, env: gym.Env, args: Namespace) -> None:
+        super().__init__(env)
+        self.env = env
+        self.scale_factor = getattr(args, 'reward_scale', 1e-3)
+        self.max_n = getattr(args, 'max_n', float('inf'))
+        self.max_p = getattr(args, 'max_p', float('inf'))
+        self.max_k = getattr(args, 'max_k', float('inf'))
+        self.max_w = getattr(args, 'max_w', float('inf'))
+        self.prev_wso = 0.0
 
-        if (yield_reward > 0) and (tot_k <= self.max_k) and (act_tuple[self.env.unwrapped.K] == 0):
-            constraint_bonus += 100
+    def reset(self, **kwargs: dict) -> tuple[np.ndarray, dict]:
+        self.prev_wso = 0.0
+        return self.env.reset(**kwargs)
 
-        if (yield_reward > 0) and (tot_w <= self.max_w) and (act_tuple[self.env.unwrapped.I] == 0):
-            constraint_bonus += 100
+    def _get_reward(self, output: dict, act_tuple: tuple[float, float, float, float]) -> float:
+        last = output[-1]
         
-        return yield_reward + constraint_bonus
+        # Delta Yield
+        current_wso = last["WSO"] if last["WSO"] is not None else 0.0
+        delta_yield = max(0.0, current_wso - self.prev_wso)
+        self.prev_wso = current_wso
+        yield_reward = delta_yield * self.scale_factor
+
+        # Strict Threshold Penalty (Punishes the specific action that crosses the line)
+        penalty = 0.0
+        # A penalty of 1.0 per violation is huge when daily yield is ~0.1
+        if last["TOTN"] > self.max_n and act_tuple[self.env.unwrapped.N] > 0: penalty += 1.0
+        if last["TOTP"] > self.max_p and act_tuple[self.env.unwrapped.P] > 0: penalty += 1.0
+        if last["TOTK"] > self.max_k and act_tuple[self.env.unwrapped.K] > 0: penalty += 1.0
+        if last["TOTIRRIG"] > self.max_w and act_tuple[self.env.unwrapped.I] > 0: penalty += 1.0
+
+        return yield_reward - penalty
 
 class RewardScalingWrapper(RewardWrapper):
     """
@@ -1149,7 +1102,7 @@ class DenseSmoothConstraintRewardWrapper(RewardWrapper):
         self.max_k = getattr(args, 'max_k', float('inf'))
         self.max_w = getattr(args, 'max_w', float('inf'))
 
-        self.penalty_weight = 50.0 
+        self.penalty_weight = 5.0 
 
         self.u_curr = 0
         self.rm_rewards = {1: 1.0, 2: 2.0, 3: 5.0}
