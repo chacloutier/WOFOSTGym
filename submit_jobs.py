@@ -1096,6 +1096,15 @@ wrappers = [
     "RewardFertilizationThresholdWrapper",
 ]
 
+agents = [
+    ("CPO", ["--alg.num-steps", "4096", "--alg.target-kl", "0.01", "--alg.cost-limit", "0.05"]),
+]
+
+# 2. Define the four upgraded Dense wrappers
+wrappers = [
+    "DenseLagrangianRewardWrapper",
+]
+
 jobs = []
 
 # 3. Automatically generate the 25 job configurations
