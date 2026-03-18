@@ -51,6 +51,16 @@ class Args(RL_Args):
     checkpoint_frequency: int = 500
     """How often to save the agent during training"""
 
+    # --- Constraint Thresholds ---
+    max_n: float = 80.0
+    """Maximum Nitrogen limit"""
+    max_p: float = 80.0
+    """Maximum Phosphorous limit"""
+    max_k: float = 80.0
+    """Maximum Potassium limit"""
+    max_w: float = 40.0
+    """Maximum Water limit"""
+
 
 class DQN(nn.Module, Agent):
     def __init__(self, env: gym.Env, state_fpath: str = None, **kwargs: dict) -> None:

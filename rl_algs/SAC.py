@@ -53,6 +53,16 @@ class Args(RL_Args):
     checkpoint_frequency: int = 500
     """How often to save the agent during training"""
 
+    # --- Constraint Thresholds ---
+    max_n: float = 80.0
+    """Maximum Nitrogen limit"""
+    max_p: float = 80.0
+    """Maximum Phosphorous limit"""
+    max_k: float = 80.0
+    """Maximum Potassium limit"""
+    max_w: float = 40.0
+    """Maximum Water limit"""
+
 
 def layer_init(layer, bias_const=0.0):
     nn.init.kaiming_normal_(layer.weight)
