@@ -1100,6 +1100,11 @@ agents = [
     ("CPO", ["--alg.num-steps", "4096", "--alg.target-kl", "0.01", "--alg.cost-limit", "0.05"]),
 ]
 
+agents = [
+    ("SAC", []),
+    ("DQN", []),
+]
+
 # 2. Define the four upgraded Dense wrappers
 wrappers = [
     "DenseLagrangianRewardWrapper",
@@ -1166,7 +1171,7 @@ slurm_template = """#!/bin/bash
 source $HOME/env/wofost_env/bin/activate 
 
 # Offline W&B Configuration
-export WANDB_MODE=offline
+export WANDB_MODE=online
 export WANDB_DIR={save_folder} 
 export WANDB_PROJECT="WOFOST-RL"
 export WANDB_ENTITY="chacloutier-4B"
