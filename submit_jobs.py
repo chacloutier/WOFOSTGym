@@ -1107,7 +1107,11 @@ agents = [
 
 # 2. Define the four upgraded Dense wrappers
 wrappers = [
-    "DenseLagrangianRewardWrapper",
+    "DenseSmoothConstraintRewardWrapper",
+    "DenseRewardMachineWrapper",         
+    "DenseFertilizationThresholdWrapper", 
+    "DenseThresholdRespectingWrapper", 
+    "RewardFertilizationThresholdWrapper",
 ]
 
 jobs = []
