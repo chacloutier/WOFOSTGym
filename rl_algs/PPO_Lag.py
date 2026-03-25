@@ -240,6 +240,7 @@ def train(kwargs: Namespace) -> None:
             frac = 1.0 - (iteration - 1.0) / args.num_iterations
             lrnow = frac * args.learning_rate
             optimizer.param_groups[0]["lr"] = lrnow
+            lagrange_optimizer.param_groups[0]["lr"] = frac * args.lagrangian_learning_rate
 
         # --- Rollout Phase ---
         for step in range(0, args.num_steps):
