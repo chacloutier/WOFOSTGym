@@ -72,11 +72,6 @@ def layer_init(layer: nn.Module, std: float = np.sqrt(2), bias_const: float = 0.
     return layer
 
 def log_constraint_infos(writer, infos, global_step):
-    """
-    Logs raw constraint-related info from env infos.
-    Supports vectorized envs (dict or list format).
-    Logs env 0 only to avoid clutter.
-    """
     if isinstance(infos, dict):
         if "track/total_n" in infos:
             writer.add_scalar("constraints/total_n", infos["track/total_n"][0], global_step)
@@ -105,10 +100,6 @@ def log_constraint_infos(writer, infos, global_step):
 
 
 class UsageTracker:
-    """
-    Converts cumulative resource counters from env infos
-    into per-step normalized usage rates.
-    """
     def __init__(self, num_envs: int, args: Args):
         self.num_envs = num_envs
         self.args = args
@@ -173,7 +164,6 @@ class PPOLag(nn.Module, Agent):
             layer_init(nn.Linear(64, 1), std=1.0),
         )
 
-        # RATE critic (predicts per-step normalized usage)
         self.cost_critic = nn.Sequential(
             layer_init(nn.Linear(obs_dim, 64)),
             nn.Tanh(),
@@ -190,7 +180,6 @@ class PPOLag(nn.Module, Agent):
         clamped_log_lambda = torch.clamp(self.log_lagrange_multiplier, min=-10.0)
         return torch.exp(clamped_log_lambda)
 
-    # [RESTORED] This method is required by the Agent Abstract Base Class
     def get_action(self, x: np.ndarray | torch.Tensor) -> torch.Tensor:
         logits = self.actor(x)
         probs = Categorical(logits=logits)
@@ -283,7 +272,6 @@ def train(kwargs: Namespace):
 
             next_obs, reward, term, trunc, infos = envs.step(action.cpu().numpy())
             
-            # --- EARLY TERMINATION ON VIOLATION ---
             if args.terminate_on_violation:
                 violated = np.zeros(args.num_envs, dtype=bool)
                 if isinstance(infos, dict) and "track/total_n" in infos:
@@ -313,19 +301,14 @@ def train(kwargs: Namespace):
             next_done = np.logical_or(term, trunc)
 
             if global_step % args.checkpoint_frequency == 0:
-                # 1. Log the average reward from a clean evaluation run
                 writer.add_scalar("charts/average_reward", eval_policy(agent, envs, kwargs, device), global_step)
                 log_constraint_infos(writer, infos, global_step)
                 
-                # 2. Save the model weights
                 torch.save(agent.state_dict(), f"{kwargs.save_folder}{run_name}/agent.pt")
                 if kwargs.track:
                     wandb.save(f"{wandb.run.dir}/agent.pt", policy="now")
 
             step_cost = usage_tracker.extract_step_usage(infos, next_done)
-
-            # [FIXED] Amplify the reward signal so the agent "cares" more about yield
-            # This prevents it from taking the "do nothing" action out of fear.
             scaled_reward = reward * 10.0
 
             rewards[step] = torch.tensor(scaled_reward, device=device, dtype=torch.float32)
@@ -334,19 +317,34 @@ def train(kwargs: Namespace):
             next_obs = torch.tensor(next_obs, device=device, dtype=torch.float32)
             next_done = torch.tensor(next_done, device=device, dtype=torch.float32)
 
-        # ---------------- Reward GAE ----------------
+        # ---------------- Reward & Cost GAE ----------------
         advantages = torch.zeros_like(rewards)
+        cost_advantages = torch.zeros_like(costs) # [UPDATED] Initialize cost advantages [num_steps, num_envs, 4]
+        
         lastgaelam = 0
+        lastgaelam_cost = torch.zeros((args.num_envs, 4), device=device) # [UPDATED] Track GAE for 4 cost resources
+        
         with torch.no_grad():
             next_value = agent.critic(next_obs).flatten()
-
+            next_cost_value = agent.cost_critic(next_obs) # [UPDATED] Get next predicted cost
+            
         for t in reversed(range(args.num_steps)):
             nextnonterminal = 1.0 - (next_done if t == args.num_steps - 1 else dones[t + 1])
+            
+            # --- Standard Reward GAE ---
             nextval = next_value if t == args.num_steps - 1 else values[t + 1]
             delta = rewards[t] + args.gamma * nextval * nextnonterminal - values[t]
             advantages[t] = lastgaelam = delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
 
+            # --- Cost GAE [UPDATED] ---
+            next_nonterm_cost = nextnonterminal.unsqueeze(-1) # [UPDATED] Broadcast shape for 4 resources
+            next_cval = next_cost_value if t == args.num_steps - 1 else cost_values[t + 1]
+            
+            delta_c = costs[t] + args.gamma * next_cval * next_nonterm_cost - cost_values[t]
+            cost_advantages[t] = lastgaelam_cost = delta_c + args.gamma * args.gae_lambda * next_nonterm_cost * lastgaelam_cost
+
         returns = advantages + values
+        cost_returns = cost_advantages + cost_values # [UPDATED] Calculate final cost returns
 
         # ---------------- Flatten ----------------
         b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
@@ -356,14 +354,14 @@ def train(kwargs: Namespace):
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
 
-        b_cost_targets = costs.reshape(-1, 4)
+        # [UPDATED] Use the forward-looking GAE returns and advantages, not the raw daily costs
+        b_cost_targets = cost_returns.reshape(-1, 4)
         b_cost_values = cost_values.reshape(-1, 4)
-        b_cost_advantages = b_cost_targets - b_cost_values
+        b_cost_advantages = cost_advantages.reshape(-1, 4)
 
         # ---------------- PID (P-term) ----------------
         with torch.no_grad():
-            # [FIXED] Calculate True Episodic Usage instead of per-step usage
-            total_batch_costs = costs.sum(dim=0) # Shape: [num_envs, 4]
+            total_batch_costs = costs.sum(dim=0)
             episodes_per_env = torch.clamp(dones.sum(dim=0).unsqueeze(-1), min=1.0) 
             
             mean_episodic_cost = (total_batch_costs / episodes_per_env).mean(dim=0)
@@ -372,6 +370,9 @@ def train(kwargs: Namespace):
             p_term_lambda = torch.clamp(args.pid_kp * violation, min=0.0)
         
         lam = agent.get_lagrange_multiplier().detach() + p_term_lambda
+        
+        # [NOTE] Your logic here is flawless: multiplying the 4 cost advantages by their respective 4 lambdas, 
+        # and summing them up to create a single penalty scalar.
         b_weighted_cost = (b_cost_advantages * lam.unsqueeze(0)).sum(dim=1)
         b_combined_adv = b_advantages - b_weighted_cost
 
@@ -392,8 +393,6 @@ def train(kwargs: Namespace):
                 )
 
                 ratio = (newlogp - b_logprobs[mb]).exp()
-                
-                # Store entropy for accurate logging
                 epoch_entropy.append(entropy.mean().item())
 
                 combined_adv = b_combined_adv[mb]
@@ -404,6 +403,8 @@ def train(kwargs: Namespace):
                 ).mean()
 
                 v_loss = 0.5 * (newv.view(-1) - b_returns[mb]).pow(2).mean()
+                
+                # [UPDATED] This loss function now trains against the GAE returns, predicting future cumulative usage!
                 cv_loss = 0.5 * (newcv - b_cost_targets[mb]).pow(2).mean()
 
                 loss = (
@@ -418,7 +419,7 @@ def train(kwargs: Namespace):
                 nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
                 optimizer.step()
 
-        # ---------------- Dual Update ----------------
+        # ---------------- Dual Update (I-term) ----------------
         if not args.fixed_lambda:
             lambda_loss = -(agent.log_lagrange_multiplier * violation.detach()).sum()
             lagrange_optimizer.zero_grad()
@@ -439,7 +440,6 @@ def train(kwargs: Namespace):
         writer.add_scalar("debug/adv_std", b_advantages.std(), global_step)
         writer.add_scalar("debug/pg_loss", pg_loss.item(), global_step)
         writer.add_scalar("debug/v_loss", v_loss.item(), global_step)
-    
 
     envs.close()
     writer.close()
