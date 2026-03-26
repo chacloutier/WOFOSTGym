@@ -54,13 +54,13 @@ class Args(RL_Args):
     """How often to save the agent during training"""
 
     # --- Constraint Thresholds ---
-    max_n: float = 80.0
+    max_n: float = 40.0
     """Maximum Nitrogen limit"""
-    max_p: float = 80.0
+    max_p: float = 40.0
     """Maximum Phosphorous limit"""
-    max_k: float = 80.0
+    max_k: float = 40.0
     """Maximum Potassium limit"""
-    max_w: float = 40.0
+    max_w: float = 20.0
     """Maximum Water limit"""
 
 

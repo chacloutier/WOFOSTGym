@@ -19,10 +19,10 @@ class Args(RL_Args):
     num_envs: int = 1
     """the number of parallel game environments"""
     
-    max_n: float = 80.0
-    max_w: float = 40.0
-    max_k: float = 100.0
-    max_p: float = 100.0 
+    max_n: float = 40.0
+    max_w: float = 20.0
+    max_k: float = 40.0
+    max_p: float = 40.0 
     
     seed: int = 1
     checkpoint_frequency: int = 100000

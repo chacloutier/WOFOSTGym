@@ -51,10 +51,10 @@ class Args(RL_Args):
     target_limit: float = 0.95   # desired mean usage rate
 
     # --- Resource limits (for normalization) ---
-    max_n: float = 80.0
-    max_p: float = 80.0
-    max_k: float = 80.0
-    max_w: float = 40.0
+    max_n: float = 40.0
+    max_p: float = 40.0
+    max_k: float = 40.0
+    max_w: float = 20.0
     terminate_on_violation: bool = False
 
     batch_size: int = 0

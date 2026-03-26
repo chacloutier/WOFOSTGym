@@ -46,10 +46,10 @@ class Args(RL_Args):
     """Initial value for the Lagrange multiplier"""
     
     # --- Constraint Thresholds (Matching CPO/PPO-Lag) ---
-    max_n: float = 80.0
-    max_p: float = 80.0
-    max_k: float = 80.0
-    max_w: float = 40.0
+    max_n: float = 40.0
+    max_p: float = 40.0
+    max_k: float = 40.0
+    max_w: float = 20.0
 
     batch_size: int = 0
     minibatch_size: int = 0
