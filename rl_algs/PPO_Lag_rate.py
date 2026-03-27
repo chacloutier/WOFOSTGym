@@ -252,6 +252,7 @@ def train(kwargs: Namespace):
             frac = 1.0 - (iteration - 1) / args.num_iterations
             optimizer.param_groups[0]["lr"] = frac * args.learning_rate
             current_ent_coef = frac * args.ent_coef
+            lagrange_optimizer.param_groups[0]["lr"] = frac * args.lagrangian_learning_rate
         else:
             current_ent_coef = args.ent_coef
 
