@@ -251,7 +251,8 @@ def train(kwargs: Namespace):
         if args.anneal_lr:
             frac = 1.0 - (iteration - 1) / args.num_iterations
             optimizer.param_groups[0]["lr"] = frac * args.learning_rate
-            current_ent_coef = frac * args.ent_coef
+            # current_ent_coef = frac * args.ent_coef
+            current_ent_coef = args.ent_coef
         else:
             current_ent_coef = args.ent_coef
 
