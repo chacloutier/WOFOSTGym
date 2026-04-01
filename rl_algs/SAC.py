@@ -30,7 +30,7 @@ class Args(RL_Args):
     """the replay memory buffer size"""
     gamma: float = 0.99
     """the discount factor gamma"""
-    tau: float = 1.0
+    tau: float = 0.005
     """target smoothing coefficient (default: 1)"""
     batch_size: int = 64
     """the batch size of sample from the reply memory"""
@@ -42,13 +42,13 @@ class Args(RL_Args):
     """the learning rate of the Q network network optimizer"""
     update_frequency: int = 4
     """the frequency of training updates"""
-    target_network_frequency: int = 650
+    target_network_frequency: int = 4
     """the frequency of updates for the target networks"""
     alpha: float = 0.2
     """Entropy regularization coefficient."""
     autotune: bool = True
     """automatic tuning of the entropy coefficient"""
-    target_entropy_scale: float = 0.89
+    target_entropy_scale: float = 0.5
     """coefficient for scaling the autotune entropy target"""
     checkpoint_frequency: int = 500
     """How often to save the agent during training"""
@@ -111,7 +111,7 @@ class SAC(nn.Module, Agent):
         """
         Helper function to get the action of the policy
         """
-        logits = self(x / 255.0)
+        logits = self(x)
         policy_dist = Categorical(logits=logits)
 
         return policy_dist.sample()
