@@ -1010,85 +1010,6 @@ jobs = [
     },
 ]
 
-# 1. Define the agents and any agent-specific hyperparameters
-agents = [
-    ("PPO", ["--alg.no-norm-adv", "--alg.num-steps", "4096", "--alg.ent-coef", "0.01"]),
-    ("PPO", ["--alg.num-steps", "4096", "--alg.ent-coef", "0.01"]),
-    ("SAC", []),
-    ("DQN", []),
-    ("BASELINE", [])
-]
-
-# 2. Define the four upgraded Dense wrappers
-wrappers = [
-    "DenseSmoothConstraintRewardWrapper",
-    "DenseRewardMachineWrapper",         
-    "DenseFertilizationThresholdWrapper", 
-    "DenseThresholdRespectingWrapper", 
-    "RewardFertilizationThresholdWrapper",
-]
-
-agents = [
-    ("CPO", ["--alg.num-steps", "4096", "--alg.target-kl", "0.01", "--alg.cost-limit", "0.05"]),
-]
-
-agents = [
-    ("SAC", []),
-    ("DQN", []),
-]
-
-# 2. Define the four upgraded Dense wrappers
-wrappers = [
-    "DenseLagrangianRewardWrapper",
-]
-
-jobs = []
-
-# 3. Automatically generate the 25 job configurations
-for agent_name, agent_args in agents:
-    for wrapper in wrappers:
-        
-        # Create a shorter, cleaner name for the WandB logs (e.g., "PPO_SmoothConstraint")
-        short_wrapper = wrapper.replace("Dense", "").replace("RewardWrapper", "").replace("Wrapper", "")
-        job_name = f"{agent_name}_{short_wrapper}"
-        
-        job = {
-            "name": job_name,
-            "agent_type": agent_name,
-            "args": [
-                "--env-id", "perennial-lnpkw-v0",
-                "--agro-file", "pear_agro.yaml",
-                "--env_reward", wrapper,
-                
-                # --- Global Environment Limits ---
-                "--max-n", "40.0",
-                "--max-p", "40.0",
-                "--max-k", "40.0",
-                "--max-w", "20.0",
-                "--npk.max-n", "40.0",
-                "--npk.max-p", "40.0",
-                "--npk.max-k", "40.0",
-                "--npk.max-w", "20.0",
-                
-                # --- Agro Settings ---
-                "--npk.ag.crop-name", "pear",
-                "--npk.ag.crop-variety", "pear_1",
-                "--npk.intvn_interval", "14",
-                
-                # --- Logging ---
-                "--track",
-                "--track-resources", "True",
-                
-                # --- Algorithm-Specific Section ---
-                f"alg:{agent_name}",
-                "--alg.max-n", "40.0",
-                "--alg.max-p", "40.0",
-                "--alg.max-k", "40.0",
-                "--alg.max-w", "20.0",
-            ] + agent_args  # Appends the specific args for PPO, SAC, etc.
-        }
-        jobs.append(job)
-
 jobs = [
         {
         "name": "PPO_Lag_Pear_Dense_Reward_higher_lr",
@@ -1462,6 +1383,101 @@ jobs = [
         ]
     },
 ]
+
+# 1. Define the agents and any agent-specific hyperparameters
+agents = [
+    ("PPO", ["--alg.no-norm-adv", "--alg.num-steps", "4096", "--alg.ent-coef", "0.01"]),
+    ("PPO", ["--alg.num-steps", "4096", "--alg.ent-coef", "0.01"]),
+    ("SAC", []),
+    ("DQN", []),
+    ("BASELINE", [])
+]
+
+# 2. Define the four upgraded Dense wrappers
+wrappers = [
+    "DenseSmoothConstraintRewardWrapper",
+    "DenseRewardMachineWrapper",         
+    "DenseFertilizationThresholdWrapper", 
+    "DenseThresholdRespectingWrapper", 
+    "RewardFertilizationThresholdWrapper",
+]
+
+agents = [
+    ("CPO", ["--alg.num-steps", "4096", "--alg.target-kl", "0.01", "--alg.cost-limit", "0.05"]),
+]
+
+agents = [
+    ("SAC", []),
+    ("DQN", []),
+]
+
+# 2. Define the four upgraded Dense wrappers
+wrappers = [
+    "DenseLagrangianRewardWrapper",
+]
+
+agents = [
+    ("PPO", ["--alg.no-norm-adv", "--alg.num-steps", "4096", "--alg.ent-coef", "0.01"]),
+    ("PPO", ["--alg.num-steps", "4096", "--alg.ent-coef", "0.01"]),
+    ("SAC", []),
+    ("DQN", []),
+    ("BASELINE", [])
+]
+
+# 2. Define the four upgraded Dense wrappers
+wrappers = [
+    "DenseSmoothConstraintRewardWrapper",
+    "DenseRewardMachineWrapper",         
+    "DenseFertilizationThresholdWrapper", 
+    "DenseThresholdRespectingWrapper", 
+]
+
+jobs = []
+
+# 3. Automatically generate the 25 job configurations
+for agent_name, agent_args in agents:
+    for wrapper in wrappers:
+        
+        # Create a shorter, cleaner name for the WandB logs (e.g., "PPO_SmoothConstraint")
+        short_wrapper = wrapper.replace("Dense", "").replace("RewardWrapper", "").replace("Wrapper", "")
+        job_name = f"{agent_name}_{short_wrapper}"
+        
+        job = {
+            "name": job_name,
+            "agent_type": agent_name,
+            "args": [
+                "--env-id", "perennial-lnpkw-v0",
+                "--agro-file", "pear_agro.yaml",
+                "--env_reward", wrapper,
+                
+                # --- Global Environment Limits ---
+                "--max-n", "40.0",
+                "--max-p", "40.0",
+                "--max-k", "40.0",
+                "--max-w", "20.0",
+                "--npk.max-n", "40.0",
+                "--npk.max-p", "40.0",
+                "--npk.max-k", "40.0",
+                "--npk.max-w", "20.0",
+                
+                # --- Agro Settings ---
+                "--npk.ag.crop-name", "pear",
+                "--npk.ag.crop-variety", "pear_1",
+                "--npk.intvn_interval", "14",
+                
+                # --- Logging ---
+                "--track",
+                "--track-resources", "True",
+                
+                # --- Algorithm-Specific Section ---
+                f"alg:{agent_name}",
+                "--alg.max-n", "40.0",
+                "--alg.max-p", "40.0",
+                "--alg.max-k", "40.0",
+                "--alg.max-w", "20.0",
+            ] + agent_args  # Appends the specific args for PPO, SAC, etc.
+        }
+        jobs.append(job)
 
 # SLURM Template for Compute Canada
 slurm_template = """#!/bin/bash

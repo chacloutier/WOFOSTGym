@@ -893,7 +893,8 @@ class DenseRewardMachineWrapper(RewardWrapper):
         current_wso = last["WSO"] if last["WSO"] is not None else 0.0
         delta_yield = max(0.0, current_wso - self.prev_wso)
         self.prev_wso = current_wso
-        yield_reward = delta_yield * self.scale_factor
+        # yield_reward = delta_yield * self.scale_factor
+        yield_reward = delta_yield
 
         tot_n, tot_w = last["TOTN"], last["TOTIRRIG"]
         tot_k, tot_p = last["TOTK"], last["TOTP"]
@@ -936,7 +937,8 @@ class DenseThresholdRespectingWrapper(RewardWrapper):
         current_wso = last["WSO"] if last["WSO"] is not None else 0.0
         delta_yield = max(0.0, current_wso - self.prev_wso)
         self.prev_wso = current_wso
-        yield_reward = delta_yield * self.scale_factor
+        # yield_reward = delta_yield * self.scale_factor
+        yield_reward = delta_yield
 
         tot_n, tot_w = last["TOTN"], last["TOTIRRIG"]
         tot_k, tot_p = last["TOTK"], last["TOTP"]
@@ -978,7 +980,8 @@ class DenseFertilizationThresholdWrapper(RewardWrapper):
         current_wso = last["WSO"] if last["WSO"] is not None else 0.0
         delta_yield = max(0.0, current_wso - self.prev_wso)
         self.prev_wso = current_wso
-        yield_reward = delta_yield * self.scale_factor
+        # yield_reward = delta_yield * self.scale_factor
+        yield_reward = delta_yield
 
         # Strict Threshold Penalty (Punishes the specific action that crosses the line)
         penalty = 0.0
@@ -1156,7 +1159,8 @@ class DenseSmoothConstraintRewardWrapper(RewardWrapper):
         delta_wso = max(0.0, current_wso - self.prev_wso)
         self.prev_wso = current_wso
 
-        yield_reward = delta_wso * self.scale_factor
+        # yield_reward = delta_wso * self.scale_factor
+        yield_reward = delta_wso
 
 
         # -------------------------
