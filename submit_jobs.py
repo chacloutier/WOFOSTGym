@@ -1432,6 +1432,16 @@ wrappers = [
     "DenseThresholdRespectingWrapper", 
 ]
 
+agents = [
+    ("SAC", []),
+    ("BASELINE", [])
+]
+
+# 2. Define the four upgraded Dense wrappers
+wrappers = [
+    "RewardFertilizationThresholdWrapper",
+]
+
 jobs = []
 
 # 3. Automatically generate the 25 job configurations
@@ -1482,7 +1492,7 @@ for agent_name, agent_args in agents:
 # SLURM Template for Compute Canada
 slurm_template = """#!/bin/bash
 #SBATCH --account=def-mcrowley_gpu
-#SBATCH --time=0-23:00:00  
+#SBATCH --time=0-30:00:00  
 #SBATCH --mem=32G             
 #SBATCH --cpus-per-task=16
 #SBATCH --gres=gpu:nvidia_h100_80gb_hbm3_2g.20gb:1
