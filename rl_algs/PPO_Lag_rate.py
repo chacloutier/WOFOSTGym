@@ -48,7 +48,7 @@ class Args(RL_Args):
     fixed_lambda: bool = False
 
     pid_kp: float = 0.1          # proportional gain
-    target_limit: float = 0.85   # desired mean usage rate
+    target_limit: float = 0.80   # desired mean usage rate
 
     # --- Resource limits (for normalization) ---
     max_n: float = 40.0

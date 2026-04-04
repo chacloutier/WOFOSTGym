@@ -432,14 +432,35 @@ def train(kwargs: Namespace) -> None:
                 break
         
         # --- Lagrange Multiplier Update ---
-        mean_cost = b_cost_returns.mean()
-        violation = mean_cost - args.cost_limit
+        # mean_cost = b_cost_returns.mean()
+        # violation = mean_cost - args.cost_limit
+        
+        # if not args.fixed_lambda:
+        #     lagrange_optimizer.zero_grad()
+        #     lambda_loss = -agent.get_lagrange_multiplier() * violation.detach()
+        #     lambda_loss.backward()
+        #     lagrange_optimizer.step()
+
+        with torch.no_grad():
+            # Sum all costs that occurred in the batch
+            total_batch_costs = costs.sum()
+            # Count how many episodes finished in this batch
+            episodes_in_batch = torch.clamp(dones.sum(), min=1.0)
+            
+            # The true average cost per episode
+            mean_episodic_cost = total_batch_costs / episodes_in_batch
+        
+        # Calculate violation based on the true episodic cost
+        violation = mean_episodic_cost - args.cost_limit
         
         if not args.fixed_lambda:
             lagrange_optimizer.zero_grad()
             lambda_loss = -agent.get_lagrange_multiplier() * violation.detach()
             lambda_loss.backward()
             lagrange_optimizer.step()
+            
+        # Optional: Log the true episodic cost to WandB so you can see it drop!
+        writer.add_scalar("constraints/mean_episodic_cost", mean_episodic_cost.item(), global_step)
 
         # Logging
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
