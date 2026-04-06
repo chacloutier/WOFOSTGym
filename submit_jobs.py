@@ -1610,44 +1610,6 @@ jobs = [
 
 jobs = [
     {
-        "name": "BASELINE_Pear_Dense_Reward",
-        "agent_type": "BASELINE",
-        "args": [
-            "--env-id", "perennial-lnpkw-v0",
-            "--agro-file", "pear_agro.yaml",
-            "--env_reward", "DenseLagrangianRewardWrapper",
-            
-            # Global Env Limits
-            "--max_n", "40.0",
-            "--max_p", "40.0",
-            "--max_k", "40.0",
-            "--max_w", "20.0",
-            "--npk.max_n", "40.0",
-            "--npk.max_p", "40.0",
-            "--npk.max_k", "40.0",
-            "--npk.max_w", "20.0",
-            
-            # Agro Settings
-            "--npk.ag.crop-name", "pear",
-            "--npk.ag.crop-variety", "pear_1",
-            "--npk.intvn_interval", "14",
-            
-            # Logging
-            "--track",
-            "--track-resources", "True",
-            
-            # Baseline Specific Args
-            "alg:BASELINE",
-            "--alg.max_n", "40.0",
-            "--alg.max_p", "40.0",
-            "--alg.max_k", "40.0",
-            "--alg.max_w", "20.0"
-        ]
-    }
-]
-
-jobs = [
-    {
         "name": "PPO_Lag_rate_Pear_Dense_Reward",
         "agent_type": "PPO_Lag_rate",
         "args": [
@@ -1705,6 +1667,44 @@ jobs = [
             "--alg.ent-coef", "0.01",
         ]
     },
+]
+
+jobs = [
+    {
+        "name": "BASELINE_Pear_Dense_Reward",
+        "agent_type": "BASELINE",
+        "args": [
+            "--env-id", "perennial-lnpkw-v0",
+            "--agro-file", "pear_agro.yaml",
+            "--env_reward", "DenseLagrangianRewardWrapper",
+            
+            # Global Env Limits
+            "--max_n", "40.0",
+            "--max_p", "40.0",
+            "--max_k", "40.0",
+            "--max_w", "20.0",
+            "--npk.max_n", "40.0",
+            "--npk.max_p", "40.0",
+            "--npk.max_k", "40.0",
+            "--npk.max_w", "20.0",
+            
+            # Agro Settings
+            "--npk.ag.crop-name", "pear",
+            "--npk.ag.crop-variety", "pear_1",
+            "--npk.intvn_interval", "14",
+            
+            # Logging
+            "--track",
+            "--track-resources", "True",
+            
+            # Baseline Specific Args
+            "alg:BASELINE",
+            "--alg.max_n", "40.0",
+            "--alg.max_p", "40.0",
+            "--alg.max_k", "40.0",
+            "--alg.max_w", "20.0"
+        ]
+    }
 ]
 
 # SLURM Template for Compute Canada
