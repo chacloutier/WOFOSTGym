@@ -104,9 +104,24 @@ def train(kwargs: Namespace) -> None:
             done = np.logical_or(terminations, truncations)[0]
 
             if done:
+                # Log the Reward
                 writer.add_scalar("charts/average_reward", episodic_return, global_step)
                 sps = int(global_step / (time.time() - start_time))
                 writer.add_scalar("charts/SPS", sps, global_step)
+                
+                # Log the Constraints so they appear in WandB exactly like PPO!
+                if isinstance(infos, dict) and "track/total_n" in infos:
+                    writer.add_scalar("constraints/total_n", infos["track/total_n"][0], global_step)
+                    writer.add_scalar("constraints/total_p", infos["track/total_p"][0], global_step)
+                    writer.add_scalar("constraints/total_k", infos["track/total_k"][0], global_step)
+                    writer.add_scalar("constraints/total_w", infos["track/total_w"][0], global_step)
+                    writer.add_scalar("constraints/violation_rate", infos["track/is_violating"][0], global_step)
+                elif isinstance(infos, list) and len(infos) > 0 and "track/total_n" in infos[0]:
+                    writer.add_scalar("constraints/total_n", infos[0]["track/total_n"], global_step)
+                    writer.add_scalar("constraints/total_p", infos[0]["track/total_p"], global_step)
+                    writer.add_scalar("constraints/total_k", infos[0]["track/total_k"], global_step)
+                    writer.add_scalar("constraints/total_w", infos[0]["track/total_w"], global_step)
+                    writer.add_scalar("constraints/violation_rate", infos[0]["track/is_violating"], global_step)
 
     envs.close()
     writer.close()
