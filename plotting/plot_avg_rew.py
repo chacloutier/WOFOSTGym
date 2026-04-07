@@ -141,6 +141,7 @@ for path in run_paths:
     # 3. Clean the data locally! 
     # Forward fill gaps, then drop remaining NaNs
     history_clean = history.sort_values("global_step").ffill().dropna(subset=[reward_key, constraint_key])
+    history_clean = history.sort_values("global_step")
     
     if history_clean.empty:
          print(f"  -> Warning: Data was all NaNs for {run.name} after cleaning. Skipping.")
@@ -155,6 +156,9 @@ for path in run_paths:
     # Calculate final metrics
     means_reward.append(last_100k_data[reward_key].mean())
     stds_reward.append(last_100k_data[reward_key].std())
+
+    test = last_100k_data[constraint_key].sum()
+    print("sum = " + str(test))
     
     means_constraint.append(last_100k_data[constraint_key].mean())
     stds_constraint.append(last_100k_data[constraint_key].std())
@@ -172,7 +176,7 @@ ax1.bar(
     x_positions, means_reward, yerr=stds_reward, 
     align='center', alpha=0.85, ecolor='black', capsize=6, color='#2ca02c' # Green
 )
-ax1.set_ylim(8, 10) # Your custom zoom limit
+ax1.set_ylim(8.75, 9.75) # Your custom zoom limit
 ax1.set_ylabel('Average Yield Reward (Last 100k Steps)', fontsize=12)
 ax1.set_title('Yield Performance (Last 100k Steps)', fontsize=14)
 ax1.set_xticks(x_positions)
