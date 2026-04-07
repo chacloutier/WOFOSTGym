@@ -7,7 +7,7 @@ echo "🔍 Searching for W&B offline runs from March 16 and 17, 2026..."
 # Put the paths directly into the find command so Bash expands them correctly!
 # (Note: Added /wandb/ to the end of the path based on your ls output)
 # find /scratch/cloutcha/runs/{baseline_local,dqn_local,ppo_local,sac_local,cpo_local,ppo_lag_local,ppo_lag_rate_local}/pear/seed_1/wandb/ -type d \( -name "run-*" -o -name "offline-run-*" \) 2>/dev/null | while read -r run_dir; do
-find /scratch/cloutcha/runs/{ppo_lag_local,ppo_lag_rate_local}/pear/seed_1/wandb/ -type d \( -name "run-202604*" -o -name "offline-run-202604*" \) 2>/dev/null | while read -r run_dir; do
+find /scratch/cloutcha/runs/{baseline_local,ppo_lag_local,ppo_lag_rate_local}/pear/seed_1/wandb/ -type d \( -name "run-202604*" -o -name "offline-run-202604*" \) 2>/dev/null | while read -r run_dir; do
     echo "---------------------------------------------------"
     echo "🚀 Syncing: $run_dir"
     wandb sync "$run_dir"
