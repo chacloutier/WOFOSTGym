@@ -90,13 +90,15 @@ for custom_name, run_id in RUNS_TO_PLOT.items():
     
     # Calculate final metrics
     means_reward.append(last_100k_data[reward_key].mean())
-    stds_reward.append(last_100k_data[reward_key].std())
+    # stds_reward.append(last_100k_data[reward_key].std())
+    stds_reward.append(last_100k_data[reward_key].std() / np.sqrt(len(last_100k_data)))
 
     test = last_100k_data[constraint_key].sum()
     print("sum = " + str(test))
     
     means_constraint.append(last_100k_data[constraint_key].mean())
-    stds_constraint.append(last_100k_data[constraint_key].std())
+    # stds_constraint.append(last_100k_data[constraint_key].std())
+    stds_constraint.append(last_100k_data[constraint_key].std() / np.sqrt(len(last_100k_data)))
     
     # Use the custom name for the graph labels instead of run.name
     names.append(custom_name)
@@ -107,30 +109,51 @@ fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
 
 x_positions = np.arange(len(names))
 
-# --- SUBPLOT 1: REWARD ---
-ax1.bar(
+# # --- SUBPLOT 1: REWARD ---
+# ax1.bar(
+#     x_positions, means_reward, yerr=stds_reward, 
+#     align='center', alpha=0.85, ecolor='black', capsize=6, color='#2ca02c' # Green
+# )
+# # ax1.set_ylim(8.75, 9.75) # Your custom zoom limit
+# ax1.set_ylabel('Average Yield Reward (Last 100k Steps)', fontsize=12)
+# ax1.set_title('Yield Performance (Last 100k Steps)', fontsize=14)
+# ax1.set_xticks(x_positions)
+# ax1.set_xticklabels(names, rotation=30, ha='right', fontsize=11)
+# ax1.grid(axis='y', linestyle='--', alpha=0.5)
+# ax1.set_xlabel("Target Resource Utilization")
+
+ax1.errorbar(
     x_positions, means_reward, yerr=stds_reward, 
-    align='center', alpha=0.85, ecolor='black', capsize=6, color='#2ca02c' # Green
+    fmt='-o',          # '-' means solid line, 'o' means circle marker
+    color='#2ca02c',   # Green
+    ecolor='black',    # Black error bars
+    capsize=6, 
+    markersize=8,      # Make the dots a bit bigger
+    linewidth=2        # Thicken the connecting line
 )
-ax1.set_ylim(8.75, 9.75) # Your custom zoom limit
+
+# You can safely zoom back in now!
+ax1.set_ylim(9.1, 9.3) 
+
 ax1.set_ylabel('Average Yield Reward (Last 100k Steps)', fontsize=12)
-ax1.set_title('Yield Performance (Last 100k Steps)', fontsize=14)
+ax1.set_title('Yield Performance', fontsize=14)
 ax1.set_xticks(x_positions)
 ax1.set_xticklabels(names, rotation=30, ha='right', fontsize=11)
 ax1.grid(axis='y', linestyle='--', alpha=0.5)
-ax1.set_xlabel("Target Resource Utilization")
+ax1.set_xlabel("Target Resource Utilization", fontsize=12)
+ax1.set_xlim(-0.2, 3.2)
 
 # --- SUBPLOT 2: CONSTRAINTS ---
 ax2.bar(
-    x_positions, means_constraint,
+    x_positions, means_constraint, yerr=stds_constraint,
     align='center', alpha=0.85, ecolor='black', capsize=6, color='#d62728' # Red
 )
-ax2.set_ylabel('Average Constraint Violation', fontsize=12)
-ax2.set_title('Safety / Constraint Compliance', fontsize=14)
+ax2.set_ylabel('Constraint Violation', fontsize=12)
+ax2.set_title('Average Resource Constraint Violation (Last 100k Steps)', fontsize=14)
 ax2.set_xticks(x_positions)
 ax2.set_xticklabels(names, rotation=30, ha='right', fontsize=11)
 ax2.grid(axis='y', linestyle='--', alpha=0.5)
-ax2.set_xlabel("Target Resource Utilization")
+ax2.set_xlabel("Target Resource Utilization", fontsize=12)
 
 # Formatting to prevent overlap
 plt.tight_layout()

@@ -35,7 +35,7 @@ for label, run_id in RUNS.items():
         run = api.run(run_path)
         
         # Fetch the history, downsampling to 1000 points for a clean plot
-        history = run.history(keys=["global_step", METRIC_NAME], samples=1000)
+        history = run.history(keys=["global_step", METRIC_NAME], samples=100000)
         history = history.dropna(subset=[METRIC_NAME])
         
         # --- CRITICAL STEP: Scale the reward by 1000 ---

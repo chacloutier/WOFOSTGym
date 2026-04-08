@@ -427,7 +427,18 @@ def train(kwargs: Namespace):
             lagrange_optimizer.step()
 
         # ---------------- Logging ----------------
-        writer.add_scalar("charts/lambda_mean", agent.get_lagrange_multiplier().mean().item(), global_step)
+        # Get the tensor containing all 4 lambdas
+        current_lambdas = agent.get_lagrange_multiplier().detach()
+        
+        # Log the mean (keep your original metric)
+        writer.add_scalar("charts/lambda_mean", current_lambdas.mean().item(), global_step)
+        
+        # Log the individual lambdas
+        writer.add_scalar("charts/lambda_n", current_lambdas[0].item(), global_step)
+        writer.add_scalar("charts/lambda_p", current_lambdas[1].item(), global_step)
+        writer.add_scalar("charts/lambda_k", current_lambdas[2].item(), global_step)
+        writer.add_scalar("charts/lambda_w", current_lambdas[3].item(), global_step)
+        
         writer.add_scalar("constraints/mean_episodic_cost", mean_episodic_cost.mean().item(), global_step)
         
         writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
