@@ -38,6 +38,12 @@ RUNS_TO_PLOT = {
     "0.75": "gyn1s1w5"
 }
 
+# RUNS_TO_PLOT = {
+#     "PPO": "7amjp9bm",
+#     "DQN": "myqiethm",
+#     "Baseline": "rfd9jmae"
+# }
+
 # --- METRIC KEYS ---
 # Change the constraint_key if you want to plot a specific resource like "constraints/total_n"
 reward_key = "charts/average_reward"
@@ -106,10 +112,11 @@ for custom_name, run_id in RUNS_TO_PLOT.items():
 # 4. Plotting (Side-by-Side Subplots)
 # Create a figure with 1 row and 2 columns
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+# fig, (ax2) = plt.subplots(1, 1, figsize=(10, 5))
 
 x_positions = np.arange(len(names))
 
-# # --- SUBPLOT 1: REWARD ---
+# --- SUBPLOT 1: REWARD ---
 # ax1.bar(
 #     x_positions, means_reward, yerr=stds_reward, 
 #     align='center', alpha=0.85, ecolor='black', capsize=6, color='#2ca02c' # Green
@@ -120,7 +127,8 @@ x_positions = np.arange(len(names))
 # ax1.set_xticks(x_positions)
 # ax1.set_xticklabels(names, rotation=30, ha='right', fontsize=11)
 # ax1.grid(axis='y', linestyle='--', alpha=0.5)
-# ax1.set_xlabel("Target Resource Utilization")
+# # ax1.set_xlabel("Target Resource Utilization")
+# ax1.set_xlabel("Agent Type", fontsize=12)
 
 ax1.errorbar(
     x_positions, means_reward, yerr=stds_reward, 
@@ -133,14 +141,15 @@ ax1.errorbar(
 )
 
 # You can safely zoom back in now!
-ax1.set_ylim(9.1, 9.3) 
+# ax1.set_ylim(9.1, 9.3) 
 
-ax1.set_ylabel('Average Yield Reward (Last 100k Steps)', fontsize=12)
-ax1.set_title('Yield Performance', fontsize=14)
+ax1.set_ylabel('Average Yield Reward', fontsize=15)
+ax1.set_title('Yield Performance', fontsize=15, fontweight='bold', pad=15)
 ax1.set_xticks(x_positions)
-ax1.set_xticklabels(names, rotation=30, ha='right', fontsize=11)
+ax1.set_xticklabels(names, rotation=30, ha='right', fontsize=15)
 ax1.grid(axis='y', linestyle='--', alpha=0.5)
-ax1.set_xlabel("Target Resource Utilization", fontsize=12)
+ax1.set_xlabel("Target Resource Utilization", fontsize=15)
+# ax1.set_xlabel("Agent Type", fontsize=20, fontweight='bold')
 ax1.set_xlim(-0.2, 3.2)
 
 # --- SUBPLOT 2: CONSTRAINTS ---
@@ -148,12 +157,12 @@ ax2.bar(
     x_positions, means_constraint, yerr=stds_constraint,
     align='center', alpha=0.85, ecolor='black', capsize=6, color='#d62728' # Red
 )
-ax2.set_ylabel('Constraint Violation', fontsize=12)
-ax2.set_title('Average Resource Constraint Violation (Last 100k Steps)', fontsize=14)
+ax2.set_ylabel('Constraint Violation', fontsize=15)
+ax2.set_title('Average Resource Constraint Violation', fontsize=15, fontweight='bold', pad=15)
 ax2.set_xticks(x_positions)
-ax2.set_xticklabels(names, rotation=30, ha='right', fontsize=11)
+ax2.set_xticklabels(names, rotation=30, ha='right', fontsize=15)
 ax2.grid(axis='y', linestyle='--', alpha=0.5)
-ax2.set_xlabel("Target Resource Utilization", fontsize=12)
+ax2.set_xlabel("Target Resource Utilization", fontsize=15)
 
 # Formatting to prevent overlap
 plt.tight_layout()

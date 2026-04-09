@@ -120,7 +120,7 @@ class SAC(nn.Module, Agent):
         """
         Get action and values for training
         """
-        logits = self(x / 255.0)
+        logits = self(x)
         policy_dist = Categorical(logits=logits)
         action = policy_dist.sample()
         action_probs = policy_dist.probs

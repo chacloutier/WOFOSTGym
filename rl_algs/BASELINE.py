@@ -86,23 +86,16 @@ def train(kwargs: Namespace) -> None:
             
             # Get the resource with the highest deficit
             most_urgent_need = max(deficits, key=deficits.get)
-
-            # --- THE SMART HEURISTIC UPGRADE ---
-            # Extract the current month from the base WOFOST simulator
-            current_date = envs.envs[0].unwrapped.date
-            current_month = current_date.month
             
-            # Only apply resources during the active growing season (April through August)
-            if 4 <= current_month <= 8:
-                # 3. If the deficit is significant (> 0), act on it
-                if deficits[most_urgent_need] > 0:
-                    action_dict[most_urgent_need] = 1
-                    
-                    # Update trackers
-                    if most_urgent_need == 'n': total_n += FERT_UNIT
-                    elif most_urgent_need == 'irrig': total_w += IRRIG_UNIT
-                    elif most_urgent_need == 'k': total_k += FERT_UNIT
-                    elif most_urgent_need == 'p': total_p += FERT_UNIT
+            # 3. If the deficit is significant (> 0), act on it
+            if deficits[most_urgent_need] > 0:
+                action_dict[most_urgent_need] = 1
+                
+                # Update trackers
+                if most_urgent_need == 'n': total_n += FERT_UNIT
+                elif most_urgent_need == 'irrig': total_w += IRRIG_UNIT
+                elif most_urgent_need == 'k': total_k += FERT_UNIT
+                elif most_urgent_need == 'p': total_p += FERT_UNIT
             
             action_int = utils.action_to_numpy(envs.envs[0], action_dict)
             next_obs, reward, terminations, truncations, infos = envs.step(action_int)
